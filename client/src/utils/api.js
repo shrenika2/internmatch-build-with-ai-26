@@ -1,0 +1,24 @@
+import axios from 'axios';
+
+const API = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+});
+
+// Add a request interceptor to include auth token
+API.interceptors.request.use((config) => {
+    const userInfo = localStorage.getItem('userInfo');
+    if (userInfo) {
+        const { token } = JSON.parse(userInfo);
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
+export const authAPI = {
+    login: (credentials) => API.post('/auth/login', credentials),
+    register: (userData) => API.post('/auth/register', userData),
+    getMe: () => API.get('/auth/me'),
+    getStatus: () => API.get('/auth/status'),
+};
+
+export default API;

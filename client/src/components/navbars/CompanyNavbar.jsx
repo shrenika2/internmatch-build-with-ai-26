@@ -1,0 +1,78 @@
+import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Briefcase, LogOut, LayoutDashboard, PlusCircle, MessageSquare } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import NotificationCenter from '../NotificationCenter';
+
+const CompanyNavbar = () => {
+    const { user, logout } = useAuth();
+    const navigate = useNavigate();
+
+    const handleLogout = () => {
+        logout();
+        navigate('/login');
+    };
+
+    return (
+        <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/50 backdrop-blur-xl border-b border-white/10">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex items-center justify-between h-16">
+                    <div className="flex items-center">
+                        <Link to="/company/dashboard" className="flex items-center gap-2 group">
+                            <div className="p-2 bg-green-600 rounded-lg group-hover:rotate-12 transition-transform">
+                                <Briefcase className="w-5 h-5 text-white" />
+                            </div>
+                            <span className="text-xl font-bold bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+                                HR Portal
+                            </span>
+                        </Link>
+                    </div>
+
+                    <div className="hidden md:block">
+                        <div className="ml-6 flex items-baseline space-x-1">
+                            <Link to="/login" className="text-slate-400 hover:text-white px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors">
+                                Student
+                            </Link>
+                            <Link to="/login" className="text-slate-400 hover:text-white px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors">
+                                Faculty
+                            </Link>
+                            <Link to="/company/dashboard" className="px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-500/10">
+                                Company
+                            </Link>
+                            <Link
+                                to={user?.role === 'admin' ? '/admin/dashboard' : '/admin/login'}
+                                title={user && user.role !== 'admin' ? "Admin access only" : ""}
+                                className={`px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors ${user?.role === 'admin' ? 'text-red-500 bg-red-500/10' : 'text-slate-400 hover:text-red-400'
+                                    }`}
+                            >
+                                Admin
+                            </Link>
+                            <div className="w-px h-4 bg-white/10 mx-2" />
+                            <Link to="/company/community" className="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                Talent Hub
+                            </Link>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <NotificationCenter />
+                        <Link to="/company/dashboard" className="flex items-center gap-2 text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
+                            <LayoutDashboard className="w-4 h-4" />
+                            Dashboard
+                        </Link>
+                        <div className="h-6 w-px bg-white/10" />
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-2 text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    );
+};
+
+export default CompanyNavbar;
