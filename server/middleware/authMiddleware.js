@@ -19,9 +19,15 @@ const protect = asyncHandler(async (req, res, next) => {
                 throw new Error('Not authorized, user not found');
             }
 
-            if (req.user.status !== 'approved') {
+            if (req.user.isSuspended || req.user.status === 'blocked') {
                 res.status(401);
-                throw new Error('Access denied. Your account is not approved or has been blocked.');
+                throw new Error('Access denied. Your account has been suspended or blocked.');
+            }
+
+            // Students can access without approval, others must be approved
+            if (req.user.role !== 'student' && req.user.status !== 'approved') {
+                res.status(401);
+                throw new Error('Access denied. Your account is not yet approved.');
             }
 
             next();
@@ -61,7 +67,16 @@ const protectTokenOnly = asyncHandler(async (req, res, next) => {
     }
 });
 
-// Grant access to specific roles
+// Role specific helpers
+const admin = (req, res, next) => {
+    if (req.user && req.user.role === 'admin') {
+        next();
+    } else {
+        res.status(403);
+        throw new Error('Access denied: Admin protocol required.');
+    }
+};
+
 const authorize = (...roles) => {
     return (req, res, next) => {
         if (!roles.includes(req.user.role)) {
@@ -72,4 +87,4 @@ const authorize = (...roles) => {
     };
 };
 
-module.exports = { protect, authorize, protectTokenOnly };
+module.exports = { protect, authorize, protectTokenOnly, admin };

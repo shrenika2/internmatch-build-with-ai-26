@@ -34,7 +34,19 @@ const markAsRead = asyncHandler(async (req, res) => {
     res.json(notification);
 });
 
+// @desc    Mark all notifications as read
+// @route   PUT /api/notifications/mark-all-read
+// @access  Private
+const markAllRead = asyncHandler(async (req, res) => {
+    await Notification.updateMany(
+        { recipient: req.user._id, isRead: false },
+        { $set: { isRead: true } }
+    );
+    res.json({ message: 'All notifications marked as read' });
+});
+
 module.exports = {
     getNotifications,
     markAsRead,
+    markAllRead
 };

@@ -52,13 +52,23 @@ const updateUserStatus = async (userId, status, adminId, req) => {
     if (!user) throw new Error('User not found');
 
     user.status = status;
+
+    // Sync new boolean flags for modernization
+    if (status === 'approved') {
+        user.isVerified = true;
+        user.isSuspended = false;
+    } else if (status === 'blocked') {
+        user.isSuspended = true;
+    } else if (status === 'rejected') {
+        user.isSuspended = true;
+    }
+
     await user.save();
 
-    // 1. Create Notification
     await Notification.create({
         recipient: userId,
         sender: adminId,
-        type: 'system',
+        type: 'profile_update',
         title: `Account ${status.charAt(0).toUpperCase() + status.slice(1)}`,
         message: `Your account status has been updated to: ${status}.`,
         link: '/login'
@@ -157,7 +167,76 @@ const updateOpportunityStatus = asyncHandler(async (req, res) => {
     opportunity.status = status;
     await opportunity.save();
 
+    // Notify the poster
+    const notification = await Notification.create({
+        recipient: opportunity.postedBy,
+        sender: req.user._id,
+        type: 'opportunity_update',
+        title: 'Opportunity Status Updated',
+        message: `Your opportunity "${opportunity.title}" status has been updated to ${status}.`,
+        link: `/opportunities/${opportunity._id}`
+    });
+
+    const io = req.app.get('socketio');
+    if (io) {
+        // Emit to the owner
+        io.to(opportunity.postedBy.toString()).emit('notification', notification);
+
+        // Broadcast to all if it becomes 'open' or 'closed'
+        if (status === 'open' || status === 'closed') {
+            io.emit('opportunity:statusUpdated', {
+                opportunityId: opportunity._id,
+                status,
+                title: opportunity.title
+            });
+        }
+    }
+
     res.json({ message: `Opportunity status updated to ${status}` });
+});
+
+// @desc    Broadcast System Message
+// @route   POST /api/admin/broadcast
+// @access  Private (Admin)
+const broadcastMessage = asyncHandler(async (req, res) => {
+    const { title, message, targetGroup, link } = req.body;
+    // targetGroup can be 'all', 'students', 'faculty', 'company' or specific filters like { branch: 'CS' }
+
+    let query = {};
+    if (targetGroup === 'students') query.role = 'student';
+    else if (targetGroup === 'faculty') query.role = 'faculty';
+    else if (targetGroup === 'company') query.role = 'company';
+    else if (typeof targetGroup === 'object') query = { ...query, ...targetGroup };
+
+    const users = await User.find(query).select('_id');
+
+    // Create notifications for all target users
+    const notifications = users.map(user => ({
+        recipient: user._id,
+        sender: req.user._id,
+        type: 'broadcast',
+        title,
+        message,
+        link: link || '#'
+    }));
+
+    await Notification.insertMany(notifications);
+
+    const io = req.app.get('socketio');
+    if (io) {
+        // In production, you might want to use a more efficient way for large broadcasts
+        // like a specific room for all students
+        if (targetGroup === 'all') {
+            io.emit('broadcast:new', { title, message, link });
+        } else if (targetGroup === 'students') {
+            io.to('students').emit('broadcast:new', { title, message, link });
+        } else {
+            // For smaller groups, we can loop or just use general emit with filter checks on client
+            io.emit('broadcast:new', { title, message, link, targetGroup });
+        }
+    }
+
+    res.json({ success: true, message: `Broadcast sent to ${users.length} users.` });
 });
 
 // @desc    Get All Applications (Audit Logs)
@@ -185,5 +264,6 @@ module.exports = {
     deleteUser,
     getAllOpportunities,
     updateOpportunityStatus,
-    getAllApplications
+    getAllApplications,
+    broadcastMessage
 };

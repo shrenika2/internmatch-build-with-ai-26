@@ -11,26 +11,37 @@ const {
     deleteUser,
     getAllOpportunities,
     updateOpportunityStatus,
-    getAllApplications
+    getAllApplications,
+    broadcastMessage
 } = require('../controllers/adminController');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { getSettings, updateSettings } = require('../controllers/settingsController');
+const { getSystemHealth } = require('../controllers/systemHealthController');
+const { protect, admin } = require('../middleware/authMiddleware');
 
-// All routes protected and restricted to Admin
-router.use(protect);
-router.use(authorize('admin'));
+// Dashboard & Metrics
+router.get('/stats', protect, admin, getStats);
+router.get('/system-health', protect, admin, getSystemHealth);
 
-router.get('/stats', getStats);
-router.get('/users', getAllUsers);
-router.get('/pending-users', getPendingUsers);
-router.put('/approve/:userId', approveUser);
-router.put('/reject/:userId', rejectUser);
-router.put('/block/:userId', blockUser);
-router.put('/unblock/:userId', unblockUser);
-router.delete('/users/:userId', deleteUser);
+// User Management
+router.get('/users', protect, admin, getAllUsers);
+router.get('/pending-users', protect, admin, getPendingUsers);
+router.put('/approve/:userId', protect, admin, approveUser);
+router.put('/reject/:userId', protect, admin, rejectUser);
+router.put('/block/:userId', protect, admin, blockUser);
+router.put('/unblock/:userId', protect, admin, unblockUser);
+router.delete('/users/:userId', protect, admin, deleteUser);
 
-router.get('/opportunities', getAllOpportunities);
-router.put('/opportunities/:id/status', updateOpportunityStatus);
+// Content Moderation
+router.get('/opportunities', protect, admin, getAllOpportunities);
+router.put('/opportunities/:id/status', protect, admin, updateOpportunityStatus);
+router.get('/applications', protect, admin, getAllApplications);
 
-router.get('/applications', getAllApplications);
+// Communications
+router.post('/broadcast', protect, admin, broadcastMessage);
+
+// Platform Settings
+router.route('/settings')
+    .get(protect, admin, getSettings)
+    .put(protect, admin, updateSettings);
 
 module.exports = router;

@@ -3,27 +3,51 @@ import API from '../utils/api';
 import OpportunityCard from '../components/OpportunityCard';
 import { Search, Filter, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useAuth } from '../context/AuthContext';
 
 const Opportunities = () => {
+    const { socket } = useAuth();
     const [opportunities, setOpportunities] = useState([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState('all');
 
-    useEffect(() => {
-        const fetchOpportunities = async () => {
-            try {
-                const { data } = await API.get('/opportunities');
-                setOpportunities(data);
-            } catch (err) {
-                console.error('Failed to fetch opportunities', err);
-            } finally {
-                setLoading(false);
-            }
-        };
+    const fetchOpportunities = async () => {
+        try {
+            const { data } = await API.get('/opportunities');
+            setOpportunities(data);
+        } catch (err) {
+            console.error('Failed to fetch opportunities', err);
+        } finally {
+            setLoading(false);
+        }
+    };
 
+    useEffect(() => {
         fetchOpportunities();
     }, []);
+
+    useEffect(() => {
+        if (!socket) return;
+
+        socket.on('opportunity:statusUpdated', (data) => {
+            setOpportunities(prev => {
+                if (data.status === 'closed') {
+                    return prev.filter(op => op._id !== data.opportunityId);
+                }
+                return prev.map(op => op._id === data.opportunityId ? { ...op, status: data.status } : op);
+            });
+        });
+
+        socket.on('new_opportunity', (newOpp) => {
+            setOpportunities(prev => [newOpp, ...prev]);
+        });
+
+        return () => {
+            socket.off('opportunity:statusUpdated');
+            socket.off('new_opportunity');
+        };
+    }, [socket]);
 
     const filteredOpportunities = opportunities.filter((op) => {
         const matchesSearch = op.title.toLowerCase().includes(searchTerm.toLowerCase()) ||

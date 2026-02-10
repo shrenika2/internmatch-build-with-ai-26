@@ -4,31 +4,54 @@ import { io } from 'socket.io-client';
 
 const AuthContext = createContext();
 
+const SOCKET_URL = 'http://localhost:5000';
+
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [socket, setSocket] = useState(null);
 
     useEffect(() => {
-        const userInfo = localStorage.getItem('userInfo');
-        if (userInfo) {
-            setUser(JSON.parse(userInfo));
+        try {
+            const userInfo = localStorage.getItem('userInfo');
+            if (userInfo) {
+                setUser(JSON.parse(userInfo));
+            }
+        } catch (err) {
+            console.error('Failed to parse user info from localStorage', err);
+            localStorage.removeItem('userInfo');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }, []);
 
-    // Global Action Listener for Admin Status Updates (Blocked/Force Logout)
+    // Socket Connection Management
     useEffect(() => {
         if (user && user.token) {
-            const socket = io('http://localhost:5000', {
+            const newSocket = io(SOCKET_URL, {
                 auth: { token: user.token }
             });
 
-            socket.on('force-logout', (data) => {
+            setSocket(newSocket);
+
+            newSocket.on('connect', () => {
+                console.log('Socket connected:', newSocket.id);
+                // Join role-based room
+                if (user.role === 'student') {
+                    newSocket.emit('join_room', 'students');
+                } else if (user.role === 'faculty') {
+                    newSocket.emit('join_room', 'faculty');
+                } else if (user.role === 'company') {
+                    newSocket.emit('join_room', 'company');
+                }
+            });
+
+            newSocket.on('force-logout', (data) => {
                 alert(data.message || 'Your session has ended.');
                 logout();
             });
 
-            socket.on('admin:status-update', (data) => {
+            newSocket.on('admin:status-update', (data) => {
                 if (data.userId === user._id) {
                     // Update local user status
                     const updatedUser = { ...user, status: data.status };
@@ -41,9 +64,12 @@ export const AuthProvider = ({ children }) => {
                 }
             });
 
-            return () => socket.disconnect();
+            return () => {
+                newSocket.disconnect();
+                setSocket(null);
+            };
         }
-    }, [user]);
+    }, [user?.token, user?._id]); // Only re-run if token or ID changes
 
     const login = async (email, password) => {
         const { data } = await authAPI.login({ email, password });
@@ -65,11 +91,20 @@ export const AuthProvider = ({ children }) => {
             if (!userInfo) return;
             const parsed = JSON.parse(userInfo);
 
-            // Call the new status endpoint (which bypasses the 'approved' middleware check)
+            // Call the new status endpoint
             const { data } = await authAPI.getStatus();
 
-            if (data.status !== parsed.status) {
-                const updatedUser = { ...parsed, status: data.status };
+            if (
+                data.status !== parsed.status ||
+                data.isVerified !== parsed.isVerified ||
+                data.isSuspended !== parsed.isSuspended
+            ) {
+                const updatedUser = {
+                    ...parsed,
+                    status: data.status,
+                    isVerified: data.isVerified,
+                    isSuspended: data.isSuspended
+                };
                 setUser(updatedUser);
                 localStorage.setItem('userInfo', JSON.stringify(updatedUser));
                 return data.status;
@@ -88,7 +123,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUserStatus }}>
+        <AuthContext.Provider value={{ user, loading, socket, login, register, logout, refreshUserStatus }}>
             {children}
         </AuthContext.Provider>
     );

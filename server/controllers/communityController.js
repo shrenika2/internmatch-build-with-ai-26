@@ -132,7 +132,7 @@ const getMessages = asyncHandler(async (req, res) => {
 // @route   POST /api/communities/:id/message
 // @access  Private (Members only)
 const sendMessage = asyncHandler(async (req, res) => {
-    const { content } = req.body;
+    const { content, parentMessage } = req.body;
     const community = await Community.findById(req.params.id);
 
     if (!community) {
@@ -150,11 +150,15 @@ const sendMessage = asyncHandler(async (req, res) => {
         community: req.params.id,
         sender: req.user._id,
         content,
+        parentMessage: parentMessage || null,
+        readBy: [{ user: req.user._id }]
     });
 
-    const populatedMessage = await Message.findById(message._id).populate('sender', 'name role avatar');
+    const populatedMessage = await Message.findById(message._id)
+        .populate('sender', 'name role avatar')
+        .populate('parentMessage', 'content sender');
 
-    // Update lastReadAt for the sender so they don't have unread messages they just sent
+    // Update lastReadAt for the sender
     await MemberReadStatus.findOneAndUpdate(
         { user: req.user._id, community: req.params.id },
         { lastReadAt: new Date() },
@@ -180,7 +184,36 @@ const markAsRead = asyncHandler(async (req, res) => {
         { upsert: true }
     );
 
+    // Also update individually for read receipts if needed
+    // But for performance we usually do this in chunks or on view
     res.json({ message: 'Marked as read' });
+});
+
+// @desc    Mark specific message as read (for read receipts)
+// @route   POST /api/communities/messages/:messageId/read
+// @access  Private
+const markMessageAsRead = asyncHandler(async (req, res) => {
+    const message = await Message.findById(req.params.messageId);
+    if (!message) {
+        res.status(404);
+        throw new Error('Message not found');
+    }
+
+    const isRead = message.readBy.some(r => r.user.toString() === req.user._id.toString());
+    if (!isRead) {
+        message.readBy.push({ user: req.user._id });
+        await message.save();
+
+        const io = req.app.get('socketio');
+        if (io) {
+            io.to(message.community.toString()).emit('message_read', {
+                messageId: message._id,
+                userId: req.user._id
+            });
+        }
+    }
+
+    res.json({ success: true });
 });
 
 const toggleHelpful = asyncHandler(async (req, res) => {
@@ -229,6 +262,7 @@ module.exports = {
     getMessages,
     sendMessage,
     markAsRead,
+    markMessageAsRead,
     toggleHelpful,
     reportContent,
 };

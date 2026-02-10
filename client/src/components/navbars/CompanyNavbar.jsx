@@ -30,26 +30,14 @@ const CompanyNavbar = () => {
 
                     <div className="hidden md:block">
                         <div className="ml-6 flex items-baseline space-x-1">
-                            <Link to="/login" className="text-slate-400 hover:text-white px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors">
-                                Student
+                            <Link to="/company/dashboard" className="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                Dashboard
                             </Link>
-                            <Link to="/login" className="text-slate-400 hover:text-white px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors">
-                                Faculty
-                            </Link>
-                            <Link to="/company/dashboard" className="px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-500/10">
-                                Company
-                            </Link>
-                            <Link
-                                to={user?.role === 'admin' ? '/admin/dashboard' : '/admin/login'}
-                                title={user && user.role !== 'admin' ? "Admin access only" : ""}
-                                className={`px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors ${user?.role === 'admin' ? 'text-red-500 bg-red-500/10' : 'text-slate-400 hover:text-red-400'
-                                    }`}
-                            >
-                                Admin
-                            </Link>
-                            <div className="w-px h-4 bg-white/10 mx-2" />
                             <Link to="/company/community" className="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 Talent Hub
+                            </Link>
+                            <Link to="/company/post-opportunity" className="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                Post Node
                             </Link>
                         </div>
                     </div>

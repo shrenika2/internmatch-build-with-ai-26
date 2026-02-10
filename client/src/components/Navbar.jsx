@@ -59,7 +59,7 @@ const Navbar = () => {
                                     Logout
                                 </button>
                                 <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-xs font-bold ring-2 ring-white/10 text-white">
-                                    {user.name.charAt(0).toUpperCase()}
+                                    {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
                                 </div>
                             </div>
                         ) : (

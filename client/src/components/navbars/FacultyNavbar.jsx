@@ -30,24 +30,9 @@ const FacultyNavbar = () => {
 
                     <div className="hidden md:block">
                         <div className="ml-6 flex items-baseline space-x-1">
-                            <Link to="/login" className="text-slate-400 hover:text-white px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors">
-                                Student
+                            <Link to="/faculty/dashboard" className="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                                Dashboard
                             </Link>
-                            <Link to="/faculty/dashboard" className="px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest text-purple-500 bg-purple-500/10">
-                                Faculty
-                            </Link>
-                            <Link to="/login" className="text-slate-400 hover:text-white px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors">
-                                Company
-                            </Link>
-                            <Link
-                                to={user?.role === 'admin' ? '/admin/dashboard' : '/admin/login'}
-                                title={user && user.role !== 'admin' ? "Admin access only" : ""}
-                                className={`px-3 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-colors ${user?.role === 'admin' ? 'text-red-500 bg-red-500/10' : 'text-slate-400 hover:text-red-400'
-                                    }`}
-                            >
-                                Admin
-                            </Link>
-                            <div className="w-px h-4 bg-white/10 mx-2" />
                             <Link to="/faculty/community" className="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 Academic Hub
                             </Link>

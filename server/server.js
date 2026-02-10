@@ -23,12 +23,19 @@ const io = initSocket(server);
 // Make io accessible in our routes/controllers
 app.set('socketio', io);
 
+// Metrics tracking
+const { metricsMiddleware } = require('./middleware/metricsMiddleware');
+app.use(metricsMiddleware);
+
 // Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // Enable CORS
 app.use(cors());
+
+// Static folder for uploads
+app.use('/uploads', express.static('uploads'));
 
 // Set security headers
 app.use(helmet());
@@ -51,6 +58,8 @@ app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/faculty', require('./routes/facultyRoutes'));
 app.use('/api/student', require('./routes/studentRoutes'));
 app.use('/api/teams', require('./routes/teamRoutes'));
+app.use('/api/student-profile', require('./routes/studentProfileRoutes'));
+app.use('/api/experience', require('./routes/experienceRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {

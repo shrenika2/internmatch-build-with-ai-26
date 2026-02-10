@@ -90,6 +90,7 @@ const getOpportunityById = asyncHandler(async (req, res) => {
 // @access  Private (Student only)
 const applyForOpportunity = asyncHandler(async (req, res) => {
     const { resume, coverLetter } = req.body;
+    const settings = await settingsService.getSettings();
     const opportunity = await Opportunity.findById(req.params.id);
 
     if (!opportunity) {
@@ -100,6 +101,40 @@ const applyForOpportunity = asyncHandler(async (req, res) => {
     if (opportunity.status !== 'open') {
         res.status(400);
         throw new Error('This opportunity is no longer accepting applications');
+    }
+
+    // 1. Max Applications Check
+    const activeApplicationsCount = await Application.countDocuments({
+        student: req.user._id,
+        status: { $in: ['applied', 'shortlisted'] }
+    });
+
+    if (activeApplicationsCount >= settings.maxApplicationsPerStudent) {
+        res.status(400);
+        throw new Error(`Platform Limit: You have reached the maximum of ${settings.maxApplicationsPerStudent} active applications.`);
+    }
+
+    // 2. Application Cooldown Check
+    const lastApplication = await Application.findOne({ student: req.user._id }).sort('-createdAt');
+    if (lastApplication && settings.applicationCooldownDays > 0) {
+        const daysSinceLast = (Date.now() - new Date(lastApplication.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceLast < settings.applicationCooldownDays) {
+            const daysRemaining = Math.ceil(settings.applicationCooldownDays - daysSinceLast);
+            res.status(400);
+            throw new Error(`Cooldown Active: Please wait ${daysRemaining} day(s) before applying to another opportunity.`);
+        }
+    }
+
+    // 3. Multi-offer check if relevant (only if already accepted elsewhere)
+    if (!settings.allowMultipleActiveOffers) {
+        const hasActiveOffer = await Application.findOne({
+            student: req.user._id,
+            status: 'accepted'
+        });
+        if (hasActiveOffer) {
+            res.status(400);
+            throw new Error('Platform Policy: Multiple active offers are disabled. Please accept or reject your existing offer first.');
+        }
     }
 
     // Basic eligibility check
@@ -152,7 +187,7 @@ const applyForOpportunity = asyncHandler(async (req, res) => {
     // Real-time notification
     const io = req.app.get('socketio');
     if (io) {
-        io.to(opportunity.postedBy.toString()).emit('notification', notification);
+        io.to(opportunity.postedBy.toString()).emit('notification:new', notification);
     }
 
     res.status(201).json(application);

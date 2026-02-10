@@ -36,9 +36,18 @@ const userSchema = mongoose.Schema(
             enum: ['pending', 'approved', 'rejected', 'blocked'],
             default: 'pending'
         },
+        isVerified: {
+            type: Boolean,
+            default: false
+        },
+        isSuspended: {
+            type: Boolean,
+            default: false
+        },
 
         // Student specific
         studentProfile: {
+            studentID: String,
             college: String,
             branch: String,
             year: Number,

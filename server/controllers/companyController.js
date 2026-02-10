@@ -111,7 +111,7 @@ const updateApplicationStatus = asyncHandler(async (req, res) => {
     const notification = await Notification.create({
         recipient: application.student._id,
         sender: req.user._id,
-        type: 'system',
+        type: 'application',
         title: `Application Status Updated`,
         message: `Your application for "${application.opportunity.title}" has been ${status}.`,
         link: '/student/dashboard'
@@ -119,7 +119,7 @@ const updateApplicationStatus = asyncHandler(async (req, res) => {
 
     const io = req.app.get('socketio');
     if (io) {
-        io.to(application.student._id.toString()).emit('notification', notification);
+        io.to(application.student._id.toString()).emit('notification:new', notification);
     }
 
     res.json({ message: `Status updated to ${status}`, application });
@@ -153,6 +153,13 @@ const deleteOpportunity = asyncHandler(async (req, res) => {
 // @route   GET /api/company/opportunities/:id/shortlist
 // @access  Private (Company/Admin)
 const getShortlist = asyncHandler(async (req, res) => {
+    const settings = await settingsService.getSettings();
+
+    if (!settings.enableAIShortlisting && req.user.role !== 'admin') {
+        res.status(403);
+        throw new Error('AI-Assisted Shortlisting is currently disabled by administrators.');
+    }
+
     const opportunity = await Opportunity.findById(req.params.id);
 
     if (!opportunity) {
@@ -272,7 +279,7 @@ const selectCandidate = asyncHandler(async (req, res) => {
     const notification = await Notification.create({
         recipient: application.student._id,
         sender: req.user._id,
-        type: 'system',
+        type: 'application',
         title: `Application Update: ${application.opportunity.title}`,
         message: `Your application for "${application.opportunity.title}" has been ${status}.`,
         link: '/student/dashboard',
@@ -281,7 +288,7 @@ const selectCandidate = asyncHandler(async (req, res) => {
     // Real-time notification
     const io = req.app.get('socketio');
     if (io) {
-        io.to(application.student._id.toString()).emit('notification', notification);
+        io.to(application.student._id.toString()).emit('notification:new', notification);
     }
 
     res.json({ message: `Candidate status updated to ${status}`, application });
@@ -296,6 +303,15 @@ const getCompanyOpportunities = asyncHandler(async (req, res) => {
     res.json(opportunities);
 });
 
+// @desc    Get all public approved companies
+// @route   GET /api/company/all
+// @access  Private
+const getPublicCompanies = asyncHandler(async (req, res) => {
+    const companies = await User.find({ role: 'company', status: 'approved' })
+        .select('name companyProfile avatar');
+    res.json(companies);
+});
+
 module.exports = {
     getCompanyStats,
     getCompanyProfile,
@@ -306,4 +322,5 @@ module.exports = {
     getShortlist,
     selectCandidate,
     getCompanyOpportunities,
+    getPublicCompanies
 };

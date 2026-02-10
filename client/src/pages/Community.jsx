@@ -15,6 +15,7 @@ const Community = () => {
     const [activeCommunity, setActiveCommunity] = useState(null);
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
+    const [replyTo, setReplyTo] = useState(null);
     const [loading, setLoading] = useState(true);
     const [msgLoading, setMsgLoading] = useState(false);
     const [showCreate, setShowCreate] = useState(false);
@@ -39,11 +40,24 @@ const Community = () => {
                     if (prev.find(m => m._id === message._id)) return prev;
                     return [...prev, message];
                 });
+                // Automatic read receipt if message is for active room
+                if (activeCommunity?._id === message.community) {
+                    handleMarkAsRead(message._id);
+                }
+            });
+
+            socket.on('message_read', ({ messageId, userId }) => {
+                setMessages(prev => prev.map(m => {
+                    if (m._id === messageId && !m.readBy?.some(r => r.user === userId)) {
+                        return { ...m, readBy: [...(m.readBy || []), { user: userId }] };
+                    }
+                    return m;
+                }));
             });
 
             return () => socket.disconnect();
         }
-    }, [user]);
+    }, [user, activeCommunity]);
 
     useEffect(() => {
         if (activeCommunity && socketRef.current) {
@@ -57,6 +71,12 @@ const Community = () => {
     useEffect(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    const handleMarkAsRead = async (messageId) => {
+        try {
+            await API.post(`/communities/messages/${messageId}/read`);
+        } catch (err) { }
+    };
 
     const fetchCommunities = async () => {
         try {
@@ -87,14 +107,14 @@ const Community = () => {
         if (!newMessage.trim() || !activeCommunity) return;
         try {
             const { data } = await API.post(`/communities/${activeCommunity._id}/message`, {
-                content: newMessage
+                content: newMessage,
+                parentMessage: replyTo?._id
             });
-            // Socket will handle the update for everyone including sender if configured, 
-            // but we add it manually for instant feedback if socket is slow
             if (!messages.find(m => m._id === data._id)) {
                 setMessages([...messages, data]);
             }
             setNewMessage('');
+            setReplyTo(null);
         } catch (err) {
             console.error(err);
         }
@@ -214,6 +234,7 @@ const Community = () => {
                                     const senior = isSenior(msg.sender);
                                     const helpfulCount = msg.helpfulBy?.length || 0;
                                     const isHelpfulByMe = msg.helpfulBy?.includes(user?._id);
+                                    const readCount = msg.readBy?.length || 0;
 
                                     return (
                                         <div key={msg._id} className={`flex gap-4 ${isMe ? 'flex-row-reverse' : ''}`}>
@@ -231,6 +252,15 @@ const Community = () => {
                                                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </span>
                                                 </div>
+
+                                                {/* parentMessage Reference */}
+                                                {msg.parentMessage && (
+                                                    <div className={`mb-1 p-2 rounded-lg bg-white/5 border-l-2 border-primary-500 text-[10px] text-slate-500 max-w-full truncate`}>
+                                                        <span className="font-bold text-primary-400">Replying to: </span>
+                                                        {msg.parentMessage.content}
+                                                    </div>
+                                                )}
+
                                                 <div className={`p-4 rounded-2xl text-sm relative group ${isMe ? 'bg-primary-600 text-white rounded-tr-none' : 'glass-card text-slate-200 rounded-tl-none'
                                                     }`}>
                                                     {msg.content}
@@ -244,26 +274,49 @@ const Community = () => {
                                                     )}
                                                 </div>
 
-                                                {/* Action Bar */}
-                                                {!isMe && (
+                                                {/* Action Bar & Read Receipts */}
+                                                <div className={`flex items-center gap-4 mt-1 ${isMe ? 'flex-row-reverse' : ''}`}>
                                                     <div className="flex gap-3">
-                                                        <button
-                                                            onClick={() => handleToggleHelpful(msg._id)}
-                                                            className={`mt-1 flex items-center gap-1 text-[10px] font-bold uppercase transition-colors ${isHelpfulByMe ? 'text-primary-400' : 'text-slate-600 hover:text-slate-400'
-                                                                }`}
-                                                        >
-                                                            <ThumbsUp className={`w-3 h-3 ${isHelpfulByMe ? 'fill-primary-400' : ''}`} />
-                                                            Helpful
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleReport(msg._id)}
-                                                            className="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase text-slate-600 hover:text-red-400 transition-colors"
-                                                        >
-                                                            <Flag className="w-3 h-3" />
-                                                            Report
-                                                        </button>
+                                                        {!isMe && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => handleToggleHelpful(msg._id)}
+                                                                    className={`flex items-center gap-1 text-[10px] font-bold uppercase transition-colors ${isHelpfulByMe ? 'text-primary-400' : 'text-slate-600 hover:text-slate-400'
+                                                                        }`}
+                                                                >
+                                                                    <ThumbsUp className={`w-3 h-3 ${isHelpfulByMe ? 'fill-primary-400' : ''}`} />
+                                                                    Helpful
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setReplyTo(msg)}
+                                                                    className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-600 hover:text-primary-400 transition-colors"
+                                                                >
+                                                                    <MessageCircle className="w-3 h-3" />
+                                                                    Reply
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleReport(msg._id)}
+                                                                    className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-600 hover:text-red-400 transition-colors"
+                                                                >
+                                                                    <Flag className="w-3 h-3" />
+                                                                    Report
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </div>
-                                                )}
+
+                                                    {isMe && (
+                                                        <div className="flex items-center gap-1 text-[9px] font-black text-slate-600 uppercase tracking-tighter">
+                                                            {readCount > 1 ? (
+                                                                <span className="text-emerald-500 flex items-center gap-1">
+                                                                    <CheckCircle2 className="w-3 h-3" /> Read by {readCount - 1}
+                                                                </span>
+                                                            ) : (
+                                                                <span>Sent</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -272,7 +325,20 @@ const Community = () => {
                             <div ref={scrollRef} />
                         </div>
 
-                        <div className="p-6 border-t border-white/5">
+                        <div className="p-6 border-t border-white/5 bg-slate-900/10">
+                            {replyTo && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="mb-4 p-3 bg-primary-600/10 border-l-4 border-primary-500 rounded-lg flex justify-between items-center"
+                                >
+                                    <div className="text-xs">
+                                        <p className="font-bold text-primary-400 uppercase tracking-widest text-[9px] mb-1">Replying to {replyTo.sender.name}</p>
+                                        <p className="text-slate-400 italic line-clamp-1">"{replyTo.content}"</p>
+                                    </div>
+                                    <button onClick={() => setReplyTo(null)} className="p-1 hover:bg-white/5 rounded text-slate-500"><Plus className="w-4 h-4 rotate-45" /></button>
+                                </motion.div>
+                            )}
                             <form onSubmit={handleSendMessage} className="relative">
                                 <input
                                     type="text"

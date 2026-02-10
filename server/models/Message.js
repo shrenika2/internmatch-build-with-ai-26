@@ -30,6 +30,17 @@ const messageSchema = mongoose.Schema(
                 ref: 'User',
             },
         ],
+        parentMessage: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Message',
+            default: null
+        },
+        readBy: [
+            {
+                user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+                readAt: { type: Date, default: Date.now }
+            }
+        ],
     },
     {
         timestamps: true,

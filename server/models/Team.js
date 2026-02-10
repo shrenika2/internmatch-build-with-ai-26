@@ -6,7 +6,7 @@ const teamSchema = mongoose.Schema(
             type: String,
             required: [true, 'Please add a team name'],
         },
-        project: {
+        opportunity: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Opportunity',
             required: true,
@@ -18,20 +18,26 @@ const teamSchema = mongoose.Schema(
         },
         members: [
             {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: 'User',
+                user: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: 'User',
+                },
+                role: {
+                    type: String,
+                    enum: ['Lead', 'Frontend', 'Backend', 'ML', 'Design', 'Marketing', 'App', 'DevOps'],
+                    default: 'Frontend'
+                },
+                status: {
+                    type: String,
+                    enum: ['pending', 'accepted', 'rejected'],
+                    default: 'pending'
+                }
             },
         ],
-        mentor: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User', // Faculty
-            required: true,
-        },
-        status: {
-            type: String,
-            enum: ['pending', 'accepted', 'rejected'],
-            default: 'pending',
-        },
+        isLocked: {
+            type: Boolean,
+            default: false
+        }
     },
     {
         timestamps: true,

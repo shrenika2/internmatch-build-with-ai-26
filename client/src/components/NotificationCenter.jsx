@@ -1,69 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
-import API from '../utils/api';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from 'react';
+import { useNotifications } from '../context/NotificationContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, X, Check, ExternalLink, Mail, Briefcase, FileText } from 'lucide-react';
-import { io } from 'socket.io-client';
+import { Bell, X, Check, ExternalLink, Mail, Briefcase, FileText, Megaphone, UserCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const NotificationCenter = () => {
-    const { user } = useAuth();
     const navigate = useNavigate();
-    const [notifications, setNotifications] = useState([]);
-    const [unreadCount, setUnreadCount] = useState(0);
+    const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
     const [isOpen, setIsOpen] = useState(false);
-    const socketRef = useRef(null);
-
-    useEffect(() => {
-        if (user) {
-            fetchNotifications();
-
-            const socket = io('http://localhost:5000', {
-                auth: { token: user.token }
-            });
-            socketRef.current = socket;
-
-            socket.on('notification', (notif) => {
-                setNotifications(prev => [notif, ...prev]);
-                setUnreadCount(prev => prev + 1);
-
-                // Optional: Browser notification
-                if (Notification.permission === 'granted') {
-                    new Notification(notif.title, { body: notif.message });
-                }
-            });
-
-            if (Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
-
-            return () => socket.disconnect();
-        }
-    }, [user]);
-
-    const fetchNotifications = async () => {
-        try {
-            const { data } = await API.get('/notifications');
-            setNotifications(data);
-            setUnreadCount(data.filter(n => !n.isRead).length);
-        } catch (err) {
-            console.error(err);
-        }
-    };
-
-    const markAsRead = async (id) => {
-        try {
-            await API.put(`/notifications/${id}/read`);
-            setNotifications(notifications.map(n => n._id === id ? { ...n, isRead: true } : n));
-            setUnreadCount(prev => Math.max(0, prev - 1));
-        } catch (err) {
-            console.error(err);
-        }
-    };
 
     const handleNotifClick = (notif) => {
         if (!notif.isRead) markAsRead(notif._id);
-        if (notif.link) {
+        if (notif.link && notif.link !== '#') {
             navigate(notif.link);
             setIsOpen(false);
         }
@@ -73,6 +21,9 @@ const NotificationCenter = () => {
         switch (type) {
             case 'application': return <Briefcase className="w-4 h-4 text-blue-400" />;
             case 'resource_added': return <FileText className="w-4 h-4 text-purple-400" />;
+            case 'broadcast': return <Megaphone className="w-4 h-4 text-amber-400" />;
+            case 'profile_update': return <UserCheck className="w-4 h-4 text-emerald-400" />;
+            case 'opportunity_update': return <Briefcase className="w-4 h-4 text-pink-400" />;
             default: return <Bell className="w-4 h-4 text-slate-400" />;
         }
     };
@@ -103,7 +54,12 @@ const NotificationCenter = () => {
                         >
                             <div className="p-4 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
                                 <h3 className="font-bold text-white text-sm">Notifications</h3>
-                                <button className="text-[10px] uppercase font-bold text-primary-400 hover:text-primary-300">Mark all read</button>
+                                <button
+                                    onClick={markAllAsRead}
+                                    className="text-[10px] uppercase font-bold text-primary-400 hover:text-primary-300"
+                                >
+                                    Mark all read
+                                </button>
                             </div>
 
                             <div className="overflow-y-auto">

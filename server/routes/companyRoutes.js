@@ -10,6 +10,7 @@ const {
     getShortlist,
     selectCandidate,
     getCompanyOpportunities,
+    getPublicCompanies
 } = require('../controllers/companyController');
 const {
     createCompanyPractice,
@@ -18,20 +19,23 @@ const {
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 router.use(protect);
-router.use(authorize('company'));
 
-router.get('/stats', getCompanyStats);
-router.get('/profile', getCompanyProfile);
-router.put('/profile', updateCompanyProfile);
-router.get('/applicants', getCompanyApplicants);
-router.put('/applications/:id/status', updateApplicationStatus);
-router.get('/opportunities', getCompanyOpportunities);
-router.delete('/opportunities/:id', deleteOpportunity);
-router.get('/opportunities/:id/shortlist', getShortlist);
-router.post('/opportunities/:id/select', selectCandidate);
+// Publicly accessible for authenticated users (Students/Faculty/Admin)
+router.get('/all', getPublicCompanies);
+
+// Company only routes
+router.get('/stats', authorize('company'), getCompanyStats);
+router.get('/profile', authorize('company'), getCompanyProfile);
+router.put('/profile', authorize('company'), updateCompanyProfile);
+router.get('/applicants', authorize('company'), getCompanyApplicants);
+router.put('/applications/:id/status', authorize('company'), updateApplicationStatus);
+router.get('/opportunities', authorize('company'), getCompanyOpportunities);
+router.delete('/opportunities/:id', authorize('company'), deleteOpportunity);
+router.get('/opportunities/:id/shortlist', authorize('company', 'admin'), getShortlist);
+router.post('/opportunities/:id/select', authorize('company', 'admin'), selectCandidate);
 
 // Practice Modules
-router.post('/practice', createCompanyPractice);
-router.get('/practice/:opportunityId', getCompanyPracticeByOpp);
+router.post('/practice', authorize('company'), createCompanyPractice);
+router.get('/practice/:opportunityId', authorize('company'), getCompanyPracticeByOpp);
 
 module.exports = router;

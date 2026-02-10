@@ -10,6 +10,7 @@ const {
     markAsRead,
     toggleHelpful,
     reportContent,
+    markMessageAsRead,
 } = require('../controllers/communityController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -28,5 +29,6 @@ router.post('/:id/message', protect, sendMessage);
 router.post('/:id/read', protect, markAsRead);
 router.get('/:id/messages', protect, getMessages);
 router.post('/messages/:messageId/helpful', protect, toggleHelpful);
+router.post('/messages/:messageId/read', protect, markMessageAsRead);
 
 module.exports = router;
