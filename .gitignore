@@ -1,14 +1,5 @@
-﻿# Ignore environment files
-**/.env*
-
-# Ignore Node modules
+﻿**/.env*
 **/node_modules
-
-# Ignore build folders
 **/dist
-
-# Ignore logs
 **/logs
-
-# Ignore uploads (if temporary)
 **/uploads
