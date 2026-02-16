@@ -1,7 +1,14 @@
-node_modules/
-.env
-dist/
-.DS_Store
-client/node_modules/
-server/node_modules/
-client/dist/
+﻿# Ignore environment files
+**/.env*
+
+# Ignore Node modules
+**/node_modules
+
+# Ignore build folders
+**/dist
+
+# Ignore logs
+**/logs
+
+# Ignore uploads (if temporary)
+**/uploads
