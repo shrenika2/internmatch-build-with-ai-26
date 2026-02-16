@@ -12,7 +12,9 @@ const {
     getAllOpportunities,
     updateOpportunityStatus,
     getAllApplications,
-    broadcastMessage
+    broadcastMessage,
+    getAuditLogs,
+    getAnalytics
 } = require('../controllers/adminController');
 const { getSettings, updateSettings } = require('../controllers/settingsController');
 const { getSystemHealth } = require('../controllers/systemHealthController');
@@ -20,6 +22,7 @@ const { protect, admin } = require('../middleware/authMiddleware');
 
 // Dashboard & Metrics
 router.get('/stats', protect, admin, getStats);
+router.get('/analytics', protect, admin, getAnalytics);
 router.get('/system-health', protect, admin, getSystemHealth);
 
 // User Management
@@ -38,6 +41,9 @@ router.get('/applications', protect, admin, getAllApplications);
 
 // Communications
 router.post('/broadcast', protect, admin, broadcastMessage);
+
+// Governance
+router.get('/audit-logs', protect, admin, getAuditLogs);
 
 // Platform Settings
 router.route('/settings')

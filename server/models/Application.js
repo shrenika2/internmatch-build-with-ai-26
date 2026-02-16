@@ -14,8 +14,9 @@ const applicationSchema = mongoose.Schema(
         },
         resume: {
             type: String,
-            required: [true, 'Please provide a resume link'],
+            required: [true, 'Please upload a resume file'],
         },
+
         coverLetter: {
             type: String,
         },
@@ -29,6 +30,14 @@ const applicationSchema = mongoose.Schema(
             default: Date.now,
         },
         score: {
+            type: Number,
+            default: 0,
+        },
+        resumeSkills: {
+            type: [String],
+            default: []
+        },
+        skillMatchScore: {
             type: Number,
             default: 0,
         },

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
     getFacultyProjects,
+    getPendingTeamRequests,
     handleTeamRequest,
     getProjectMessages,
     postProjectMessage
@@ -13,6 +14,7 @@ const {
 const { protect, authorize } = require('../middleware/authMiddleware');
 
 router.get('/projects', protect, authorize('faculty'), getFacultyProjects);
+router.get('/teams/pending', protect, authorize('faculty'), getPendingTeamRequests);
 router.put('/teams/:teamId', protect, authorize('faculty'), handleTeamRequest);
 
 router.route('/projects/:projectId/messages')

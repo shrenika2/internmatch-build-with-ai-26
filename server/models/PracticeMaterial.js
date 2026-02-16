@@ -37,6 +37,10 @@ const practiceMaterialSchema = mongoose.Schema(
             enum: ['public', 'applicants_only'],
             default: 'public',
         },
+        metadata: {
+            type: Object,
+            default: {}
+        }
     },
     {
         timestamps: true,

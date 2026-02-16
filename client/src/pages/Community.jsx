@@ -30,7 +30,7 @@ const Community = () => {
 
     useEffect(() => {
         if (user) {
-            const socket = io('http://localhost:5000', {
+            const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
                 auth: { token: user.token }
             });
             socketRef.current = socket;
@@ -81,8 +81,8 @@ const Community = () => {
     const fetchCommunities = async () => {
         try {
             const { data } = await API.get('/communities/my');
-            setCommunities(data);
-            if (data.length > 0 && !activeCommunity) setActiveCommunity(data[0]);
+            setCommunities(data || []);
+            if ((data || []).length > 0 && !activeCommunity) setActiveCommunity(data[0]);
         } catch (err) {
             console.error(err);
         } finally {
@@ -94,7 +94,7 @@ const Community = () => {
         setMsgLoading(true);
         try {
             const { data } = await API.get(`/communities/${id}/messages`);
-            setMessages(data);
+            setMessages(data || []);
         } catch (err) {
             console.error(err);
         } finally {
@@ -110,8 +110,8 @@ const Community = () => {
                 content: newMessage,
                 parentMessage: replyTo?._id
             });
-            if (!messages.find(m => m._id === data._id)) {
-                setMessages([...messages, data]);
+            if (!(messages || []).find(m => m._id === data._id)) {
+                setMessages([...(messages || []), data]);
             }
             setNewMessage('');
             setReplyTo(null);
@@ -138,7 +138,7 @@ const Community = () => {
     const handleToggleHelpful = async (messageId) => {
         try {
             const { data } = await API.post(`/communities/messages/${messageId}/helpful`);
-            setMessages(prev => prev.map(m => m._id === messageId ? { ...m, helpfulBy: data.helpfulBy } : m));
+            setMessages(prev => (prev || []).map(m => m._id === messageId ? { ...m, helpfulBy: data.helpfulBy } : m));
         } catch (err) {
             console.error(err);
         }
@@ -151,7 +151,7 @@ const Community = () => {
                 name: newRoomName,
                 type: newRoomType
             });
-            setCommunities([...communities, data]);
+            setCommunities([...(communities || []), data]);
             setActiveCommunity(data);
             setShowCreate(false);
             setNewRoomName('');
@@ -185,7 +185,7 @@ const Community = () => {
                 </div>
 
                 <div className="flex-grow overflow-y-auto p-4 space-y-2">
-                    {communities.map((comm) => (
+                    {(communities || []).map((comm) => (
                         <button
                             key={comm._id}
                             onClick={() => setActiveCommunity(comm)}
@@ -223,14 +223,14 @@ const Community = () => {
                         <div className="flex-grow overflow-y-auto p-8 space-y-6">
                             {msgLoading ? (
                                 <div className="h-full flex items-center justify-center"><Loader2 className="animate-spin text-primary-500" /></div>
-                            ) : messages.length === 0 ? (
+                            ) : (messages || []).length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center opacity-20">
                                     <MessageSquare className="w-16 h-16 mb-4" />
                                     <p>Start a conversation...</p>
                                 </div>
                             ) : (
-                                messages.map((msg) => {
-                                    const isMe = msg.sender._id === user?._id;
+                                (messages || []).map((msg) => {
+                                    const isMe = msg.sender?._id === user?._id;
                                     const senior = isSenior(msg.sender);
                                     const helpfulCount = msg.helpfulBy?.length || 0;
                                     const isHelpfulByMe = msg.helpfulBy?.includes(user?._id);

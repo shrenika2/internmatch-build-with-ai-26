@@ -29,6 +29,7 @@ const userSchema = mongoose.Schema(
         },
         // Common fields
         phone: String,
+        location: String,
         bio: String,
         avatar: String,
         status: {
@@ -45,16 +46,48 @@ const userSchema = mongoose.Schema(
             default: false
         },
 
-        // Student specific
+        // Student specific (Unified Profile)
         studentProfile: {
-            studentID: String,
+            collegeId: String,
             college: String,
-            branch: String,
+            branch: {
+                type: String,
+                required: true,
+                default: ""
+            },
             year: Number,
+            cgpa: Number,
             skills: [String],
-            resume: String,
-            github: String,
-            linkedin: String,
+            techStack: [String],
+            resumeUrl: String,
+            resumeFileUrl: String, // Persistent link to Cloudinary/Secure file
+            parsedSkills: [String], // PERSISTENCE: Reused for all future applications
+            resumeParsedAt: Date, // Timestamp for optimization
+            links: {
+                github: String,
+                linkedin: String,
+                portfolio: String,
+            },
+            portfolio: String, // Keeping this for backward compatibility if needed, but using links.portfolio primarily
+            cpProfiles: {
+                leetcode: String,
+                codeforces: String,
+                codechef: String,
+            },
+            experiences: [
+                {
+                    title: String,
+                    company: String,
+                    description: String,
+                    startDate: Date,
+                    endDate: Date,
+                    isCurrent: Boolean,
+                },
+            ],
+            isComplete: {
+                type: Boolean,
+                default: false,
+            }
         },
 
         // Company specific
@@ -77,14 +110,24 @@ const userSchema = mongoose.Schema(
     }
 );
 
-// Encrypt password using bcrypt
+// Encrypt password using bcrypt and calculate profile completeness
 userSchema.pre('save', async function (next) {
-    if (!this.isModified('password')) {
-        next();
+    // Handle password encryption
+    if (this.isModified('password')) {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
     }
 
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
+    // Handle student profile completeness (Single Source of Truth Logic)
+    if (this.role === 'student' && this.studentProfile) {
+        const hasBasicInfo = this.name && this.studentProfile.branch && this.studentProfile.year;
+        const hasSkills = this.studentProfile.skills && this.studentProfile.skills.length > 0;
+        const hasResume = !!this.studentProfile.resumeUrl;
+
+        this.studentProfile.isComplete = !!(hasBasicInfo && hasSkills && hasResume);
+    }
+
+    next();
 });
 
 // Match user entered password to hashed password in database

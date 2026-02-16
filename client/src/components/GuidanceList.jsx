@@ -15,7 +15,7 @@ const GuidanceList = () => {
         const fetchMaterials = async () => {
             try {
                 const { data } = await API.get('/practice/student');
-                setMaterials(data);
+                setMaterials(data || []);
             } catch (err) {
                 console.error('Failed to fetch practice materials', err);
             } finally {
@@ -33,7 +33,7 @@ const GuidanceList = () => {
 
     if (loading) return <div className="py-20 text-center"><p className="text-slate-500 animate-pulse">Synchronizing repository...</p></div>;
 
-    const groupedByCompany = materials.reduce((acc, m) => {
+    const groupedByCompany = (materials || []).reduce((acc, m) => {
         const key = m.role === 'company'
             ? (m.uploadedBy?.companyProfile?.companyName || m.uploadedBy?.name || 'Partner Company')
             : 'Faculty Guidance';
@@ -53,7 +53,7 @@ const GuidanceList = () => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {items.map((m) => (
+                        {(items || []).map((m) => (
                             <motion.div
                                 key={m._id}
                                 whileHover={{ y: -5 }}
@@ -78,7 +78,7 @@ const GuidanceList = () => {
                                     </div>
 
                                     <a
-                                        href={m.type === 'link' ? m.fileUrl : `${import.meta.env.VITE_SERVER_URL || 'http://localhost:5000'}${m.fileUrl}`}
+                                        href={m.type === 'link' ? m.fileUrl : `${import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'}${m.fileUrl}`}
                                         target="_blank"
                                         rel="noreferrer"
                                         className="w-full py-3 bg-emerald-600/10 hover:bg-emerald-600 text-emerald-500 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"

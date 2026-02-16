@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const auditLogSchema = mongoose.Schema(
     {
-        admin: {
+        userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
             required: true,
@@ -10,23 +10,29 @@ const auditLogSchema = mongoose.Schema(
         action: {
             type: String,
             required: true,
+            index: true,
         },
-        targetType: {
-            type: String, // 'User', 'Opportunity', 'Post', etc.
-            required: true,
-        },
-        targetId: {
-            type: mongoose.Schema.Types.ObjectId,
-            required: true,
-        },
-        details: {
+        entityType: {
             type: String,
+            required: true,
+            index: true,
+        },
+        entityId: {
+            type: mongoose.Schema.Types.ObjectId,
+            index: true,
+        },
+        metadata: {
+            type: mongoose.Schema.Types.Mixed,
         },
         ipAddress: String,
+        userAgent: String,
     },
     {
         timestamps: true,
     }
 );
+
+// Index for fast chronological retrieval and filtering
+auditLogSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

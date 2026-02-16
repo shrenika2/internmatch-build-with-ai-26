@@ -26,8 +26,8 @@ const AIShortlist = () => {
                 API.get(`/opportunities/${id}`),
                 API.get(`/company/opportunities/${id}/shortlist`)
             ]);
-            setOpportunity(oppRes.data);
-            setCandidates(shortlistRes.data);
+            setOpportunity(oppRes.data || null);
+            setCandidates(shortlistRes.data || []);
         } catch (err) {
             console.error(err);
         } finally {
@@ -39,7 +39,7 @@ const AIShortlist = () => {
         setProcessing(applicationId);
         try {
             await API.post(`/company/opportunities/${id}/select`, { applicationId, status });
-            setCandidates(prev => prev.map(c =>
+            setCandidates(prev => (prev || []).map(c =>
                 c.applicationId === applicationId ? { ...c, status } : c
             ));
         } catch (err) {
@@ -72,30 +72,30 @@ const AIShortlist = () => {
             </div>
 
             <div className="grid grid-cols-1 gap-6">
-                {candidates.map((candidate, index) => (
+                {(candidates || []).map((candidate, index) => (
                     <motion.div
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.1 }}
                         key={candidate.applicationId}
                         className={`glass-card p-6 border-l-4 ${candidate.status === 'shortlisted' ? 'border-l-green-500' :
-                                candidate.status === 'rejected' ? 'border-l-red-500' : 'border-l-primary-500/50'
+                            candidate.status === 'rejected' ? 'border-l-red-500' : 'border-l-primary-500/50'
                             }`}
                     >
                         <div className="flex flex-col lg:row lg:items-center justify-between gap-8">
                             {/* User Info */}
                             <div className="flex items-center gap-4 min-w-[300px]">
                                 <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl font-black text-primary-500 border border-white/5">
-                                    {candidate.student.name.charAt(0)}
+                                    {candidate.student?.name?.charAt(0) || '?'}
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold text-white">{candidate.student.name}</h3>
+                                    <h3 className="text-xl font-bold text-white">{candidate.student?.name || 'Student Candidate'}</h3>
                                     <div className="flex items-center gap-2 text-slate-500 text-sm mt-1">
                                         <Mail className="w-3 h-3" />
-                                        {candidate.student.email}
+                                        {candidate.student?.email || 'N/A'}
                                     </div>
                                     <div className="flex flex-wrap gap-1 mt-2">
-                                        {candidate.matchedSkills.map(skill => (
+                                        {(candidate.matchedSkills || []).map(skill => (
                                             <span key={skill} className="text-[10px] bg-primary-500/10 text-primary-400 px-2 py-0.5 rounded-full font-bold uppercase">
                                                 {skill}
                                             </span>
@@ -107,10 +107,10 @@ const AIShortlist = () => {
                             {/* Stats & Scores */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-8 border-x border-white/5">
                                 {[
-                                    { label: 'Rank Score', val: candidate.scores.rankScore, icon: Zap, color: 'text-yellow-400' },
-                                    { label: 'Skill Match', val: candidate.scores.skillMatchScore, icon: Award, color: 'text-primary-400' },
-                                    { label: 'Readiness', val: candidate.scores.readinessScore, icon: Brain, color: 'text-purple-400' },
-                                    { label: 'Activity', val: candidate.scores.practiceScore, icon: Users, color: 'text-green-400' },
+                                    { label: 'Rank Score', val: candidate.scores?.rankScore || 0, icon: Zap, color: 'text-yellow-400' },
+                                    { label: 'Skill Match', val: candidate.scores?.skillMatchScore || 0, icon: Award, color: 'text-primary-400' },
+                                    { label: 'Readiness', val: candidate.scores?.readinessScore || 0, icon: Brain, color: 'text-purple-400' },
+                                    { label: 'Activity', val: candidate.scores?.practiceScore || 0, icon: Users, color: 'text-green-400' },
                                 ].map((stat) => (
                                     <div key={stat.label} className="text-center">
                                         <div className={`flex items-center justify-center gap-1 mb-1 font-black text-lg ${stat.color}`}>
@@ -141,7 +141,10 @@ const AIShortlist = () => {
                                     <CheckCircle className="w-6 h-6" />
                                 </button>
                                 <div className="h-12 w-px bg-white/5" />
-                                <button className="bg-slate-800 p-3 rounded-xl text-white hover:bg-slate-700 transition-all flex items-center gap-2 font-bold text-sm">
+                                <button
+                                    onClick={() => navigate(`/company/student-profile/${candidate.student?.id || candidate.student?._id}`)}
+                                    className="bg-slate-800 p-3 rounded-xl text-white hover:bg-slate-700 transition-all flex items-center gap-2 font-bold text-sm"
+                                >
                                     View Profile <ExternalLink className="w-4 h-4" />
                                 </button>
                             </div>

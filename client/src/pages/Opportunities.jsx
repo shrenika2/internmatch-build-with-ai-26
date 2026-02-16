@@ -15,7 +15,7 @@ const Opportunities = () => {
     const fetchOpportunities = async () => {
         try {
             const { data } = await API.get('/opportunities');
-            setOpportunities(data);
+            setOpportunities(data || []);
         } catch (err) {
             console.error('Failed to fetch opportunities', err);
         } finally {
@@ -32,6 +32,7 @@ const Opportunities = () => {
 
         socket.on('opportunity:statusUpdated', (data) => {
             setOpportunities(prev => {
+                if (!prev) return [];
                 if (data.status === 'closed') {
                     return prev.filter(op => op._id !== data.opportunityId);
                 }
@@ -40,7 +41,7 @@ const Opportunities = () => {
         });
 
         socket.on('new_opportunity', (newOpp) => {
-            setOpportunities(prev => [newOpp, ...prev]);
+            setOpportunities(prev => [newOpp, ...(prev || [])]);
         });
 
         return () => {
@@ -49,9 +50,9 @@ const Opportunities = () => {
         };
     }, [socket]);
 
-    const filteredOpportunities = opportunities.filter((op) => {
-        const matchesSearch = op.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (op.requiredSkills && op.requiredSkills.some(s => s.toLowerCase().includes(searchTerm.toLowerCase())));
+    const filteredOpportunities = (opportunities || []).filter((op) => {
+        const matchesSearch = op.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (op.requiredSkills && (op.requiredSkills || []).some(s => s.toLowerCase().includes(searchTerm.toLowerCase())));
         const matchesType = typeFilter === 'all' || op.type === typeFilter;
         return matchesSearch && matchesType;
     });
@@ -94,7 +95,7 @@ const Opportunities = () => {
                     <Loader2 className="w-10 h-10 text-primary-500 animate-spin" />
                     <p className="text-slate-500 font-medium">Loading opportunities...</p>
                 </div>
-            ) : filteredOpportunities.length > 0 ? (
+            ) : (filteredOpportunities || []).length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                     {filteredOpportunities.map((op) => (
                         <OpportunityCard key={op._id} opportunity={op} />

@@ -3,6 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, Mail, Lock, User, Briefcase, GraduationCap, AlertCircle, Building, BookOpen, UserCircle2, ShieldCheck } from 'lucide-react';
+import BranchSelect from '../components/BranchSelect';
+
 
 const Register = () => {
     const [formData, setFormData] = useState({
@@ -32,7 +34,23 @@ const Register = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            await register(formData);
+            // Normalize payload: Only send relevant profile
+            const payload = {
+                name: formData.name,
+                email: formData.email,
+                password: formData.password,
+                role: formData.role
+            };
+
+            if (formData.role === 'student') {
+                payload.studentProfile = formData.studentProfile;
+            } else if (formData.role === 'company') {
+                payload.companyProfile = formData.companyProfile;
+            } else if (formData.role === 'faculty') {
+                payload.facultyProfile = formData.facultyProfile;
+            }
+
+            await register(payload);
             // Redirect based on role after successful registration
             if (formData.role === 'admin') navigate('/admin');
             else navigate(`/${formData.role}/dashboard`);
@@ -139,15 +157,11 @@ const Register = () => {
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-400 mb-2">Branch</label>
-                                        <input
-                                            required
-                                            type="text"
-                                            className="w-full bg-slate-950/50 border border-white/10 rounded-xl py-3 px-4 text-white focus:outline-none"
-                                            placeholder="Computer"
+                                        <BranchSelect
                                             value={formData.studentProfile.branch}
-                                            onChange={(e) => setFormData({
+                                            onChange={(value) => setFormData({
                                                 ...formData,
-                                                studentProfile: { ...formData.studentProfile, branch: e.target.value }
+                                                studentProfile: { ...formData.studentProfile, branch: value }
                                             })}
                                         />
                                     </div>
@@ -225,16 +239,12 @@ const Register = () => {
                             {formData.role === 'faculty' && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-400 mb-2">Department</label>
-                                        <input
-                                            required
-                                            type="text"
-                                            className="w-full bg-slate-950/50 border border-white/10 rounded-xl py-3 px-4 text-white focus:outline-none"
-                                            placeholder="Computer Science"
+                                        <label className="block text-sm font-medium text-slate-400 mb-2">Department / Branch</label>
+                                        <BranchSelect
                                             value={formData.facultyProfile.department}
-                                            onChange={(e) => setFormData({
+                                            onChange={(value) => setFormData({
                                                 ...formData,
-                                                facultyProfile: { ...formData.facultyProfile, department: e.target.value }
+                                                facultyProfile: { ...formData.facultyProfile, department: value }
                                             })}
                                         />
                                     </div>

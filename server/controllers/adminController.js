@@ -2,7 +2,18 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const Opportunity = require('../models/Opportunity');
 const Application = require('../models/Application');
-const Notification = require('../models/Notification');
+const AuditLog = require('../models/AuditLog');
+const { logAction } = require('../utils/auditService');
+const notificationService = require('../services/notificationService');
+const analyticsService = require('../services/analyticsService');
+
+// @desc    Get Detailed Analytics
+// @route   GET /api/admin/analytics
+// @access  Private (Admin)
+const getAnalytics = asyncHandler(async (req, res) => {
+    const analytics = await analyticsService.getDashboardOverview();
+    res.json(analytics);
+});
 
 // @desc    Get Admin Dashboard Stats
 // @route   GET /api/admin/stats
@@ -51,6 +62,7 @@ const updateUserStatus = async (userId, status, adminId, req) => {
     const user = await User.findById(userId);
     if (!user) throw new Error('User not found');
 
+    const previousStatus = user.status;
     user.status = status;
 
     // Sync new boolean flags for modernization
@@ -65,17 +77,28 @@ const updateUserStatus = async (userId, status, adminId, req) => {
 
     await user.save();
 
-    await Notification.create({
-        recipient: userId,
-        sender: adminId,
+    logAction({
+        userId: adminId,
+        action: 'ADMIN_USER_STATUS_UPDATE',
+        entityType: 'User',
+        entityId: userId,
+        metadata: { from: previousStatus, to: status },
+        req
+    });
+
+    const io = req.app.get('socketio');
+
+    await notificationService.sendNotification({
+        userId,
+        senderId: adminId,
         type: 'profile_update',
         title: `Account ${status.charAt(0).toUpperCase() + status.slice(1)}`,
         message: `Your account status has been updated to: ${status}.`,
-        link: '/login'
-    });
+        link: '/login',
+        priority: 'high'
+    }, io);
 
-    // 2. Emit Socket Event
-    const io = req.app.get('socketio');
+    // 2. Emit Socket Event for special actions
     if (io) {
         io.emit('admin:status-update', { userId, status });
         if (status === 'blocked' || status === 'rejected') {
@@ -133,6 +156,15 @@ const deleteUser = asyncHandler(async (req, res) => {
         throw new Error('Cannot delete admin users');
     }
 
+    logAction({
+        userId: req.user._id,
+        action: 'ADMIN_USER_DELETE',
+        entityType: 'User',
+        entityId: user._id,
+        metadata: { deletedUserName: user.name, deletedUserEmail: user.email },
+        req
+    });
+
     await User.findByIdAndDelete(req.params.userId);
     res.json({ message: 'User deleted permanently' });
 });
@@ -164,24 +196,32 @@ const updateOpportunityStatus = asyncHandler(async (req, res) => {
         throw new Error('Opportunity not found');
     }
 
+    const previousStatus = opportunity.status;
     opportunity.status = status;
     await opportunity.save();
 
+    logAction({
+        userId: req.user._id,
+        action: 'ADMIN_OPPORTUNITY_STATUS_UPDATE',
+        entityType: 'Opportunity',
+        entityId: opportunity._id,
+        metadata: { from: previousStatus, to: status },
+        req
+    });
+
+    const io = req.app.get('socketio');
+
     // Notify the poster
-    const notification = await Notification.create({
-        recipient: opportunity.postedBy,
-        sender: req.user._id,
+    await notificationService.sendNotification({
+        userId: opportunity.postedBy,
+        senderId: req.user._id,
         type: 'opportunity_update',
         title: 'Opportunity Status Updated',
         message: `Your opportunity "${opportunity.title}" status has been updated to ${status}.`,
         link: `/opportunities/${opportunity._id}`
-    });
+    }, io);
 
-    const io = req.app.get('socketio');
     if (io) {
-        // Emit to the owner
-        io.to(opportunity.postedBy.toString()).emit('notification', notification);
-
         // Broadcast to all if it becomes 'open' or 'closed'
         if (status === 'open' || status === 'closed') {
             io.emit('opportunity:statusUpdated', {
@@ -209,30 +249,31 @@ const broadcastMessage = asyncHandler(async (req, res) => {
     else if (typeof targetGroup === 'object') query = { ...query, ...targetGroup };
 
     const users = await User.find(query).select('_id');
+    const userIds = users.map(u => u._id);
 
-    // Create notifications for all target users
-    const notifications = users.map(user => ({
-        recipient: user._id,
-        sender: req.user._id,
+    const io = req.app.get('socketio');
+
+    await notificationService.broadcast({
         type: 'broadcast',
         title,
         message,
-        link: link || '#'
-    }));
+        link: link || '#',
+        senderId: req.user._id,
+        priority: 'medium'
+    }, userIds, io);
 
-    await Notification.insertMany(notifications);
+    logAction({
+        userId: req.user._id,
+        action: 'ADMIN_BROADCAST',
+        entityType: 'Multiple',
+        metadata: { title, targetGroup, recipientCount: users.length },
+        req
+    });
 
-    const io = req.app.get('socketio');
     if (io) {
-        // In production, you might want to use a more efficient way for large broadcasts
-        // like a specific room for all students
+        // Additional socket events if needed
         if (targetGroup === 'all') {
             io.emit('broadcast:new', { title, message, link });
-        } else if (targetGroup === 'students') {
-            io.to('students').emit('broadcast:new', { title, message, link });
-        } else {
-            // For smaller groups, we can loop or just use general emit with filter checks on client
-            io.emit('broadcast:new', { title, message, link, targetGroup });
         }
     }
 
@@ -253,6 +294,36 @@ const getAllApplications = asyncHandler(async (req, res) => {
     res.json(applications);
 });
 
+// @desc    Get System Audit Logs
+// @route   GET /api/admin/audit-logs
+// @access  Private (Admin)
+const getAuditLogs = asyncHandler(async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const { action, userId, entityType } = req.query;
+    const query = {};
+    if (action) query.action = action;
+    if (userId) query.userId = userId;
+    if (entityType) query.entityType = entityType;
+
+    const logs = await AuditLog.find(query)
+        .populate('userId', 'name email role')
+        .sort('-createdAt')
+        .skip(skip)
+        .limit(limit);
+
+    const total = await AuditLog.countDocuments(query);
+
+    res.json({
+        logs,
+        page,
+        pages: Math.ceil(total / limit),
+        total
+    });
+});
+
 module.exports = {
     getStats,
     getAllUsers,
@@ -265,5 +336,7 @@ module.exports = {
     getAllOpportunities,
     updateOpportunityStatus,
     getAllApplications,
-    broadcastMessage
+    broadcastMessage,
+    getAuditLogs,
+    getAnalytics
 };

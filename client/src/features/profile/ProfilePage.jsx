@@ -109,7 +109,7 @@ const ProfilePage = () => {
                             </div>
                         )}
                         <ProfileForm
-                            initialData={profile}
+                            initialData={profile || { user: authUser }}
                             onSave={handleSaveProfile}
                             onCancel={() => profile ? setIsEditing(false) : null}
                         />

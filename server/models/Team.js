@@ -37,6 +37,15 @@ const teamSchema = mongoose.Schema(
         isLocked: {
             type: Boolean,
             default: false
+        },
+        mentor: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+        },
+        status: {
+            type: String,
+            enum: ['pending', 'accepted', 'rejected'],
+            default: 'pending'
         }
     },
     {

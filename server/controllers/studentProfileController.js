@@ -1,13 +1,13 @@
 const asyncHandler = require('express-async-handler');
-const StudentProfile = require('../models/StudentProfile');
+const User = require('../models/User');
 const { validateStudentProfile } = require('../middleware/validationMiddleware');
+const { logAction } = require('../utils/auditService');
 
 // Helper to normalize URLs
 const normalizeUrl = (url, platform) => {
     if (!url) return '';
-    let clean = url.trim().replace(/\/$/, ""); // remove trailing slash
+    let clean = url.trim().replace(/\/$/, "");
 
-    // If it's just a username, prepend the platform URL
     if (!clean.startsWith('http')) {
         const platformMap = {
             leetcode: 'https://leetcode.com/',
@@ -19,21 +19,38 @@ const normalizeUrl = (url, platform) => {
     return clean;
 };
 
-// @desc    Get current student's profile
+// @desc    Get current student's profile (Consolidated)
 // @route   GET /api/student-profile/me
 // @access  Private (Student)
 const getMyProfile = asyncHandler(async (req, res) => {
-    const profile = await StudentProfile.findOne({ user: req.user._id })
-        .populate('user', 'name email avatar');
+    // With unified model, profile is already on req.user if protect middleware is used
+    // But we might want to ensure we have the latest or full data
+    const user = await User.findById(req.user._id);
 
-    if (!profile) {
-        return res.status(404).json({ message: 'Profile not found' });
+    if (!user || user.role !== 'student') {
+        return res.status(404).json({ message: 'Student profile not found' });
     }
 
-    res.json(profile);
+    // Return in a format compatible with existing frontend expectations
+    // Frontend expects an object with .user (populated) and profile fields
+    const response = {
+        ...user.studentProfile.toObject(),
+        fullName: user.name,
+        location: user.location,
+        bio: user.bio,
+        user: {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
+            location: user.location
+        }
+    };
+
+    res.json(response);
 });
 
-// @desc    Create or Update student profile
+// @desc    Create or Update student profile (Unified)
 // @route   POST /api/student-profile/me
 // @access  Private (Student)
 const upsertProfile = asyncHandler(async (req, res) => {
@@ -51,39 +68,100 @@ const upsertProfile = asyncHandler(async (req, res) => {
         return res.status(400).json({ message: 'Validation Error', errors: messages });
     }
 
-    const profileFields = {
-        ...req.body,
-        user: req.user._id,
-    };
+    const profileData = { ...req.body };
+    const fullName = profileData.fullName;
+    const location = profileData.location;
 
-    // Remove immutable fields if any
-    delete profileFields._id;
-    delete profileFields.createdAt;
-    delete profileFields.updatedAt;
+    // Clean up fields that shouldn't be in the subdocument
+    delete profileData.user;
+    delete profileData.fullName;
+    delete profileData._id;
+    delete profileData.location;
+    delete profileData.email; // Email should not be updated via profile form for security
 
-    let profile = await StudentProfile.findOne({ user: req.user._id });
-
-    if (profile) {
-        // Update
-        profile = await StudentProfile.findOneAndUpdate(
-            { user: req.user._id },
-            { $set: profileFields },
-            { new: true, runValidators: true }
-        );
-    } else {
-        // Create
-        profile = await StudentProfile.create(profileFields);
+    // 3. Update User Model
+    const user = await User.findById(req.user._id);
+    if (!user) {
+        res.status(404);
+        throw new Error('User not found');
     }
+
+    if (fullName) user.name = fullName;
+    if (location) user.location = location;
+    if (profileData.bio) user.bio = profileData.bio;
+
+    // Merge profile data securely
+    Object.keys(profileData).forEach(key => {
+        // Handle nested objects like cpProfiles and links
+        if (typeof profileData[key] === 'object' && !Array.isArray(profileData[key]) && profileData[key] !== null) {
+            user.studentProfile[key] = { ...user.studentProfile[key], ...profileData[key] };
+        } else {
+            user.studentProfile[key] = profileData[key];
+        }
+    });
+
+    await user.save();
+
+    logAction({
+        userId: user._id,
+        action: 'PROFILE_UPDATE',
+        entityType: 'User',
+        entityId: user._id,
+        req
+    });
 
     const io = req.app.get('socketio');
     if (io) {
-        io.emit('profile:updated', profile);
+        io.emit('profile:updated', { userId: user._id, profile: user.studentProfile });
     }
 
-    res.json(profile);
+    // Return compatible format
+    const response = {
+        ...user.studentProfile.toObject(),
+        fullName: user.name,
+        location: user.location,
+        user: {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
+            location: user.location
+        }
+    };
+
+    res.json(response);
+});
+
+// @desc    Get student profile by ID
+// @route   GET /api/student-profile/:id
+// @access  Private (Company/Faculty/Admin)
+const getStudentProfileById = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.params.id);
+
+    if (!user || user.role !== 'student') {
+        res.status(404);
+        throw new Error('Student profile not found');
+    }
+
+    const response = {
+        ...user.studentProfile.toObject(),
+        fullName: user.name,
+        location: user.location,
+        bio: user.bio,
+        user: {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
+            location: user.location
+        }
+    };
+
+    res.json(response);
 });
 
 module.exports = {
     getMyProfile,
-    upsertProfile
+    upsertProfile,
+    getStudentProfileById
 };

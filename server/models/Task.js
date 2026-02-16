@@ -30,7 +30,20 @@ const taskSchema = mongoose.Schema(
             type: String,
             enum: ['low', 'medium', 'high', 'critical'],
             default: 'medium',
-        }
+        },
+        statusHistory: [
+            {
+                status: String,
+                updatedBy: {
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: 'User',
+                },
+                updatedAt: {
+                    type: Date,
+                    default: Date.now,
+                }
+            }
+        ]
     },
     {
         timestamps: true,

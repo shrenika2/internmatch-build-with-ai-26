@@ -6,6 +6,8 @@ import {
     Briefcase, Calendar, MapPin, Target,
     FileText, Zap, ChevronRight, Loader2, ArrowLeft
 } from 'lucide-react';
+import BranchSelect from '../components/BranchSelect';
+
 
 const PostOpportunity = () => {
     const navigate = useNavigate();
@@ -22,7 +24,7 @@ const PostOpportunity = () => {
         facultyApprovalRequired: false,
         eligibilityCriteria: {
             minYear: '',
-            branches: ''
+            branch: ''
         }
     });
 
@@ -33,10 +35,7 @@ const PostOpportunity = () => {
             const dataToSubmit = {
                 ...formData,
                 requiredSkills: formData.requiredSkills.split(',').map(s => s.trim()),
-                eligibilityCriteria: {
-                    ...formData.eligibilityCriteria,
-                    branches: formData.eligibilityCriteria.branches.split(',').map(b => b.trim())
-                }
+                branch: formData.eligibilityCriteria.branch
             };
             await API.post('/opportunities', dataToSubmit);
             navigate('/company/dashboard');
@@ -160,15 +159,12 @@ const PostOpportunity = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Eligible Branches (Comma Separated)</label>
-                                    <input
-                                        required
-                                        className="w-full bg-[#080808] border border-white/5 rounded-2xl p-4 text-white focus:outline-none focus:border-emerald-500/50 transition-all font-bold"
-                                        placeholder="Computer, IT, ENTC..."
-                                        value={formData.eligibilityCriteria.branches}
-                                        onChange={e => setFormData({
+                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Eligible Branch</label>
+                                    <BranchSelect
+                                        value={formData.eligibilityCriteria.branch}
+                                        onChange={value => setFormData({
                                             ...formData,
-                                            eligibilityCriteria: { ...formData.eligibilityCriteria, branches: e.target.value }
+                                            eligibilityCriteria: { ...formData.eligibilityCriteria, branch: value }
                                         })}
                                     />
                                 </div>

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import axios from 'axios';
+import API from '../utils/api';
 import { toast } from 'react-hot-toast';
 
 const NotificationContext = createContext();
@@ -15,12 +15,7 @@ export const NotificationProvider = ({ children }) => {
         if (!user) return;
         setLoading(true);
         try {
-            const config = {
-                headers: {
-                    Authorization: `Bearer ${user.token}`,
-                },
-            };
-            const { data } = await axios.get('http://localhost:5000/api/notifications', config);
+            const { data } = await API.get('/notifications');
             setNotifications(data);
             setUnreadCount(data.filter(n => !n.isRead).length);
         } catch (err) {
@@ -85,12 +80,7 @@ export const NotificationProvider = ({ children }) => {
 
     const markAsRead = async (id) => {
         try {
-            const config = {
-                headers: {
-                    Authorization: `Bearer ${user.token}`,
-                },
-            };
-            await axios.put(`http://localhost:5000/api/notifications/${id}/read`, {}, config);
+            await API.put(`/notifications/${id}/read`);
             setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
             setUnreadCount(prev => Math.max(0, prev - 1));
         } catch (err) {
@@ -100,12 +90,7 @@ export const NotificationProvider = ({ children }) => {
 
     const markAllAsRead = async () => {
         try {
-            const config = {
-                headers: {
-                    Authorization: `Bearer ${user.token}`,
-                },
-            };
-            await axios.put(`http://localhost:5000/api/notifications/mark-all-read`, {}, config);
+            await API.put(`/notifications/mark-all-read`);
             setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
             setUnreadCount(0);
         } catch (err) {

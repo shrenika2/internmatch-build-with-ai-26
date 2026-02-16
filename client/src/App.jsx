@@ -32,6 +32,9 @@ import DashboardOverview from './features/dashboard/DashboardOverview';
 import TeamHub from './features/team/TeamHub';
 import ExperienceWall from './features/experience/ExperienceWall';
 import ProfilePage from './features/profile/ProfilePage';
+import NotificationHistory from './pages/NotificationHistory';
+import PracticeArena from './pages/PracticeArena';
+import StudentProfile from './pages/StudentProfile';
 
 import Navbar from './components/Navbar';
 
@@ -131,7 +134,9 @@ function AppRoutes() {
           <Route path="opportunities" element={<Opportunities />} />
           <Route path="opportunities/:id" element={<OpportunityDetail />} />
           <Route path="community" element={<Community />} />
+          <Route path="notifications" element={<NotificationHistory />} />
           <Route path="practice" element={<PracticeResources />} />
+          <Route path="arena/:companyId" element={<PracticeArena />} />
         </Route>
       </Route>
 
@@ -139,6 +144,7 @@ function AppRoutes() {
       <Route path="/company" element={<PrivateRoute allowedRoles={['company']} />}>
         <Route element={<CompanyLayout />}>
           <Route path="dashboard" element={<CompanyDashboard />} />
+          <Route path="student-profile/:studentId" element={<StudentProfile />} />
           <Route path="post-opportunity" element={<PostOpportunity />} />
           <Route path="opportunities/:id/shortlist" element={<AIShortlist />} />
           <Route path="community" element={<Community />} />

@@ -28,7 +28,7 @@ const ExperienceWall = () => {
             const { data } = await API.get('/experience/pending'); // For now, let's use global, but normally it's per company
             // Actually, I should probably create a new route for public approved experiences
             // For now, I'll filter approved ones or just show all for demo
-            setExperiences(data);
+            setExperiences(data || []);
         } catch (err) {
             console.error(err);
         } finally {
@@ -39,13 +39,13 @@ const ExperienceWall = () => {
     const fetchCompanies = async () => {
         try {
             const { data } = await API.get('/company/all'); // Assuming this exists
-            setCompanies(data);
+            setCompanies(data || []);
         } catch (err) {
             console.error(err);
         }
     };
 
-    const filteredExperiences = experiences.filter(exp =>
+    const filteredExperiences = (experiences || []).filter(exp =>
         (exp.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             exp.companyId?.name?.toLowerCase().includes(searchTerm.toLowerCase())) &&
         (!filters.difficulty || exp.difficulty === filters.difficulty) &&
@@ -127,9 +127,9 @@ const ExperienceWall = () => {
                 <main className="flex-1 space-y-6">
                     {loading ? (
                         <div className="py-20 flex justify-center"><Loader2 className="w-10 h-10 text-primary-500 animate-spin" /></div>
-                    ) : filteredExperiences.length > 0 ? (
+                    ) : (filteredExperiences || []).length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {filteredExperiences.map(exp => (
+                            {(filteredExperiences || []).map(exp => (
                                 <ExperienceCard key={exp._id} experience={exp} />
                             ))}
                         </div>
@@ -211,11 +211,11 @@ const ExperienceCard = ({ experience }) => {
                     )}
                 </div>
 
-                {experience.rounds && experience.rounds.length > 0 && (
+                {(experience?.rounds || []).length > 0 && (
                     <div className="mb-6 space-y-2">
                         <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Process Segments:</p>
                         <div className="flex flex-wrap gap-2">
-                            {experience.rounds.map((r, i) => (
+                            {(experience?.rounds || []).map((r, i) => (
                                 <span key={i} className="px-2 py-1 bg-white/5 border border-white/5 rounded-lg text-[9px] font-bold text-slate-400 capitalize">{r.name}</span>
                             ))}
                         </div>
@@ -289,11 +289,11 @@ const ExperienceCard = ({ experience }) => {
                                         </p>
                                     </div>
 
-                                    {experience.rounds && (
+                                    {(experience?.rounds || []).length > 0 && (
                                         <div className="space-y-4">
                                             <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest px-1">Neural Pathway (Rounds)</p>
                                             <div className="space-y-3">
-                                                {experience.rounds.map((r, i) => (
+                                                {(experience?.rounds || []).map((r, i) => (
                                                     <div key={i} className="p-4 bg-white/5 border border-white/5 rounded-2xl flex items-center gap-4 group hover:bg-primary-600/10 transition-all">
                                                         <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-500 border border-white/5 group-hover:border-primary-500/30 group-hover:text-primary-500 transition-all">
                                                             {i + 1}

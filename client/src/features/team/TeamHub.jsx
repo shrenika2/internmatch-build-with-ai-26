@@ -5,7 +5,9 @@ import {
     Users, Plus, Mail, Contact, CheckCircle2,
     XCircle, Lock, Unlock, Loader2, Send,
     ShieldCheck, Code, Server, Brain, Palette,
-    Megaphone, Smartphone, Settings
+    Megaphone, Smartphone, Settings, MessageSquare, Activity,
+    History, ExternalLink, FileText, ArrowLeft, LayoutGrid,
+    ClipboardList, Briefcase, AlertCircle, Clock, Trophy, Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -23,6 +25,10 @@ const TeamHub = () => {
 
     const [tasks, setTasks] = useState([]);
     const [assets, setAssets] = useState([]);
+    const [messages, setMessages] = useState([]);
+    const [activities, setActivities] = useState([]);
+    const [typingUsers, setTypingUsers] = useState({});
+    const [evaluation, setEvaluation] = useState(null);
     const socketRef = useRef(null);
 
     useEffect(() => {
@@ -30,21 +36,33 @@ const TeamHub = () => {
         fetchOpportunities();
 
         if (user) {
-            const socket = io('http://localhost:5000', {
+            const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
                 auth: { token: user.token }
             });
             socketRef.current = socket;
 
             socket.on('task_created', (task) => {
-                setTasks(prev => [...prev, task]);
+                setTasks(prev => [...(prev || []), task]);
             });
 
             socket.on('task_updated', (updatedTask) => {
-                setTasks(prev => prev.map(t => t._id === updatedTask._id ? updatedTask : t));
+                setTasks(prev => (prev || []).map(t => t._id === updatedTask._id ? updatedTask : t));
             });
 
             socket.on('asset_created', (asset) => {
-                setAssets(prev => [...prev, asset]);
+                setAssets(prev => [...(prev || []), asset]);
+            });
+
+            socket.on('team:message', (message) => {
+                setMessages(prev => [...(prev || []), message]);
+                // Auto-read if we are in chat tab? Will implement in Workspace
+            });
+
+            socket.on('team:typing_update', (data) => {
+                setTypingUsers(prev => ({
+                    ...prev,
+                    [data.userId]: data.isTyping ? data.userName : null
+                }));
             });
 
             return () => socket.disconnect();
@@ -61,21 +79,33 @@ const TeamHub = () => {
 
     const fetchWorkspaceData = async (teamId) => {
         try {
-            const [taskRes, assetRes] = await Promise.all([
+            const [tasksRes, assetsRes, chatRes, activityRes] = await Promise.all([
                 API.get(`/teams/${teamId}/tasks`),
-                API.get(`/teams/${teamId}/assets`)
+                API.get(`/teams/${teamId}/assets`),
+                API.get(`/teams/${teamId}/chat`),
+                API.get(`/teams/${teamId}/activity`)
             ]);
-            setTasks(taskRes.data);
-            setAssets(assetRes.data);
+            setTasks(tasksRes.data);
+            setAssets(assetsRes.data);
+            setMessages(chatRes.data);
+            setActivities(activityRes.data);
+
+            // Fetch evaluation if it exists
+            const team = (myTeams || []).find(t => t._id === teamId);
+            if (team?.opportunity) {
+                const evalRes = await API.get(`/evaluations/project/${team.opportunity._id || team.opportunity}`);
+                const teamEvalData = (evalRes.data || []).find(e => e._id === teamId);
+                setEvaluation(teamEvalData?.evaluation || null);
+            }
         } catch (err) {
-            console.error(err);
+            console.error('Failed to fetch workspace data', err);
         }
     };
 
     const fetchTeams = async () => {
         try {
             const { data } = await API.get('/teams/my');
-            setMyTeams(data);
+            setMyTeams(data || []);
         } catch (err) {
             console.error('Failed to fetch teams', err);
         } finally {
@@ -86,7 +116,7 @@ const TeamHub = () => {
     const fetchOpportunities = async () => {
         try {
             const { data } = await API.get('/opportunities?type=Project');
-            setOpportunities(data);
+            setOpportunities(data || []);
         } catch (err) {
             console.error(err);
         }
@@ -124,13 +154,19 @@ const TeamHub = () => {
     };
 
     if (activeWorkspace) {
-        const team = myTeams.find(t => t._id === activeWorkspace);
+        const team = (myTeams || []).find(t => t._id === activeWorkspace);
         return <TeamWorkspace
             team={team}
             user={user}
             onBack={() => setActiveWorkspace(null)}
             tasks={tasks}
             assets={assets}
+            messages={messages}
+            activities={activities}
+            typingUsers={typingUsers}
+            evaluation={evaluation}
+            socket={socketRef.current}
+            fetchWorkspaceData={() => fetchWorkspaceData(activeWorkspace)}
         />;
     }
 
@@ -165,12 +201,12 @@ const TeamHub = () => {
 
             {activeTab === 'my-teams' ? (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                    {myTeams.length > 0 ? (
-                        myTeams.map(team => (
+                    {(myTeams || []).length > 0 ? (
+                        (myTeams || []).map(team => (
                             <TeamCard
                                 key={team._id}
                                 team={team}
-                                currentUserId={user._id}
+                                currentUserId={user?._id}
                                 onInvite={() => { setSelectedTeam(team); setShowInviteModal(true); }}
                                 onRespond={handleRespondToInvite}
                                 onToggleLock={() => handleToggleLock(team._id)}
@@ -187,7 +223,7 @@ const TeamHub = () => {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {opportunities.map(opp => (
+                    {(opportunities || []).map(opp => (
                         <div key={opp._id} className="glass-card p-8 border-white/5 bg-slate-900/40 hover:bg-slate-900/60 transition-all flex flex-col justify-between group">
                             <div>
                                 <h4 className="text-lg font-black text-white uppercase mb-2 group-hover:text-primary-400 transition-colors">{opp.title}</h4>
@@ -215,8 +251,8 @@ const TeamHub = () => {
 };
 
 const TeamCard = ({ team, currentUserId, onInvite, onRespond, onToggleLock, onOpenWorkspace }) => {
-    const isLead = team.leader._id === currentUserId;
-    const myStatus = team.members.find(m => m.user._id === currentUserId)?.status;
+    const isLead = team?.leader?._id === currentUserId;
+    const myStatus = (team?.members || []).find(m => m.user?._id === currentUserId)?.status;
 
     const roleIcons = {
         'Lead': ShieldCheck,
@@ -260,7 +296,7 @@ const TeamCard = ({ team, currentUserId, onInvite, onRespond, onToggleLock, onOp
                 <div className="space-y-4 mb-8">
                     <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest px-1">Squad Members</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {team.members.map((member) => {
+                        {(team?.members || []).map((member) => {
                             const Icon = roleIcons[member.role] || Users;
                             return (
                                 <div key={member.user._id} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-2xl">
@@ -269,7 +305,7 @@ const TeamCard = ({ team, currentUserId, onInvite, onRespond, onToggleLock, onOp
                                             {member?.user?.name?.charAt(0) || '?'}
                                         </div>
                                         <div>
-                                            <p className="text-xs font-bold text-white">{member.user.name}</p>
+                                            <p className="text-xs font-bold text-white">{member?.user?.name}</p>
                                             <div className="flex items-center gap-1.5 mt-0.5">
                                                 <Icon className="w-3 h-3 text-primary-500" />
                                                 <p className="text-[9px] text-slate-500 uppercase font-black">{member.role}</p>
@@ -290,8 +326,8 @@ const TeamCard = ({ team, currentUserId, onInvite, onRespond, onToggleLock, onOp
 
                 <div className="flex items-center justify-between pt-6 border-t border-white/5">
                     <div className="flex -space-x-3">
-                        {team.members.map(m => (
-                            <div key={m.user._id} className="w-8 h-8 rounded-full bg-slate-800 border-2 border-slate-900 flex items-center justify-center text-[10px] font-bold text-white uppercase shadow-lg">
+                        {(team?.members || []).map(m => (
+                            <div key={m.user?._id} className="w-8 h-8 rounded-full bg-slate-800 border-2 border-slate-900 flex items-center justify-center text-[10px] font-bold text-white uppercase shadow-lg">
                                 {m?.user?.name?.charAt(0) || '?'}
                             </div>
                         ))}
@@ -421,11 +457,19 @@ const InviteModal = ({ isOpen, onClose, team, onSuccess }) => {
     );
 };
 
-const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
+const TeamWorkspace = ({ team, user, onBack, tasks, assets, messages, activities, typingUsers, evaluation, socket, fetchWorkspaceData }) => {
     const [workspaceTab, setWorkspaceTab] = useState('tasks');
     const [showAddTask, setShowAddTask] = useState(false);
     const [newTask, setNewTask] = useState({ title: '', description: '', priority: 'medium', assignee: '' });
     const [newAsset, setNewAsset] = useState({ name: '', type: 'link', url: '' });
+    const [chatMessage, setChatMessage] = useState('');
+    const chatEndRef = useRef(null);
+
+    useEffect(() => {
+        if (workspaceTab === 'chat') {
+            chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages, workspaceTab]);
 
     const handleCreateTask = async (e) => {
         e.preventDefault();
@@ -433,12 +477,14 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
             await API.post(`/teams/${team._id}/tasks`, newTask);
             setShowAddTask(false);
             setNewTask({ title: '', description: '', priority: 'medium', assignee: '' });
+            fetchWorkspaceData();
         } catch (err) { alert('Failed to create task'); }
     };
 
     const handleUpdateTaskStatus = async (taskId, status) => {
         try {
             await API.put(`/teams/tasks/${taskId}`, { status });
+            fetchWorkspaceData();
         } catch (err) { alert('Failed to update task'); }
     };
 
@@ -447,7 +493,19 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
         try {
             await API.post(`/teams/${team._id}/assets`, newAsset);
             setNewAsset({ name: '', type: 'link', url: '' });
+            fetchWorkspaceData();
         } catch (err) { alert('Failed to add resource'); }
+    };
+
+    const handleSendMessage = async (e) => {
+        if (e) e.preventDefault();
+        if (!chatMessage.trim()) return;
+
+        try {
+            await API.post(`/teams/${team._id}/chat`, { text: chatMessage });
+            setChatMessage('');
+            socket.emit('team:typing', { teamId: team._id, isTyping: false });
+        } catch (err) { alert('Failed to send message'); }
     };
 
     return (
@@ -464,24 +522,27 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
                         <h2 className="text-4xl font-black text-white uppercase tracking-tighter leading-none mb-2">{team.name} Workspace</h2>
                         <div className="flex items-center gap-4">
                             <span className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                <Users className="w-3 h-3" /> {team.members.length} Specialists Connected
+                                <Users className="w-3 h-3" /> {team?.members?.length || 0} Specialists Connected
                             </span>
                             <span className="w-1 h-1 bg-slate-700 rounded-full" />
                             <span className="text-[10px] font-black text-primary-400 uppercase tracking-widest">Verified Tactical Node</span>
                         </div>
                     </div>
                 </div>
-                <div className="flex bg-slate-950/50 p-1 rounded-2xl border border-white/5 relative z-10">
+                <div className="flex bg-slate-950/50 p-1 rounded-[1.5rem] border border-white/5 relative z-10 flex-wrap overflow-hidden">
                     {[
                         { id: 'tasks', label: 'Tactical Board', icon: ClipboardList },
-                        { id: 'assets', label: 'Asset Explorer', icon: Briefcase }
+                        { id: 'chat', label: 'Team Chat', icon: MessageSquare },
+                        { id: 'activity', label: 'Mission Log', icon: Activity },
+                        { id: 'assets', label: 'Assets', icon: Briefcase },
+                        { id: 'evaluation', label: 'Evaluation', icon: Trophy }
                     ].map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setWorkspaceTab(tab.id)}
-                            className={`px-8 py-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 ${workspaceTab === tab.id ? 'bg-primary-600 text-white shadow-xl shadow-primary-600/30' : 'text-slate-500 hover:text-white'}`}
+                            className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${workspaceTab === tab.id ? 'bg-primary-600 text-white shadow-xl shadow-primary-600/30' : 'text-slate-500 hover:text-white'}`}
                         >
-                            <tab.icon className="w-4 h-4" />
+                            <tab.icon className="w-3.5 h-3.5" />
                             {tab.label}
                         </button>
                     ))}
@@ -490,7 +551,7 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 space-y-8">
-                    {workspaceTab === 'tasks' ? (
+                    {workspaceTab === 'tasks' && (
                         <div className="space-y-6">
                             <div className="flex items-center justify-between px-4">
                                 <h4 className="text-xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
@@ -502,62 +563,151 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
                                 </button>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {tasks.length > 0 ? tasks.map(task => (
-                                    <motion.div
-                                        layout
-                                        key={task._id}
-                                        className="glass-card p-6 border-white/5 bg-slate-900/40 space-y-4 hover:border-primary-500/30 transition-all group"
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {['todo', 'in-progress', 'done'].map(status => (
+                                    <div
+                                        key={status}
+                                        onDragOver={(e) => e.preventDefault()}
+                                        onDrop={(e) => {
+                                            const taskId = e.dataTransfer.getData('taskId');
+                                            handleUpdateTaskStatus(taskId, status);
+                                        }}
+                                        className="space-y-4"
                                     >
-                                        <div className="flex justify-between items-start">
-                                            <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase ${task.priority === 'high' || task.priority === 'critical' ? 'bg-red-500/10 text-red-500' :
-                                                task.priority === 'medium' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'
-                                                }`}>
-                                                {task.priority} Priority
+                                        <div className="flex items-center justify-between px-2">
+                                            <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                                <div className={`w-1.5 h-1.5 rounded-full ${status === 'todo' ? 'bg-slate-500' : status === 'in-progress' ? 'bg-primary-500' : 'bg-emerald-500'}`} />
+                                                {status.replace('-', ' ')}
+                                            </h5>
+                                            <span className="text-[8px] font-black text-slate-700 bg-white/5 px-2 py-0.5 rounded-full">
+                                                {(tasks || []).filter(t => t.status === status).length}
                                             </span>
-                                            <div className="flex gap-2">
-                                                {['todo', 'in-progress', 'done'].map(status => (
-                                                    <button
-                                                        key={status}
-                                                        onClick={() => handleUpdateTaskStatus(task._id, status)}
-                                                        className={`w-2.5 h-2.5 rounded-full border border-white/10 transition-all ${task.status === status ?
-                                                            (status === 'done' ? 'bg-emerald-500' : status === 'in-progress' ? 'bg-primary-500' : 'bg-slate-700')
-                                                            : 'bg-transparent'
-                                                            }`}
-                                                    />
-                                                ))}
-                                            </div>
                                         </div>
-                                        <div>
-                                            <p className={`text-sm font-bold uppercase tracking-tight group-hover:text-primary-400 transition-colors ${task.status === 'done' ? 'line-through opacity-40' : 'text-white'}`}>{task.title}</p>
-                                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">{task.description}</p>
-                                        </div>
-                                        <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                                            <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase">
-                                                <History className="w-3.5 h-3.5" />
-                                                {task.status.replace('-', ' ')}
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-[10px] font-black text-slate-400">{task.assignee?.name || 'Unassigned'}</p>
-                                                <div className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center text-[8px] border border-white/5 font-bold text-white uppercase">
-                                                    {task.assignee?.name?.charAt(0) || '?'}
+
+                                        <div className="space-y-4 min-h-[400px] p-2 rounded-3xl border border-dashed border-white/[0.02] bg-white/[0.01]">
+                                            {(tasks || []).filter(t => t.status === status).map(task => (
+                                                <motion.div
+                                                    layout
+                                                    draggable
+                                                    onDragStart={(e) => e.dataTransfer.setData('taskId', task._id)}
+                                                    key={task._id}
+                                                    className="glass-card p-5 border-white/5 bg-slate-900/60 space-y-4 hover:border-primary-500/30 transition-all group cursor-grab active:cursor-grabbing"
+                                                >
+                                                    <div className="flex justify-between items-start">
+                                                        <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase ${task.priority === 'high' || task.priority === 'critical' ? 'bg-red-500/10 text-red-500' :
+                                                            task.priority === 'medium' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'
+                                                            }`}>
+                                                            {task.priority}
+                                                        </span>
+                                                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <History className="w-3 h-3 text-slate-600" />
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <p className={`text-xs font-bold uppercase tracking-tight group-hover:text-primary-400 transition-colors ${task.status === 'done' ? 'opacity-40' : 'text-white'}`}>{task.title}</p>
+                                                        <p className="text-[10px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">{task.description}</p>
+                                                    </div>
+                                                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-5 h-5 rounded-lg bg-slate-800 flex items-center justify-center text-[7px] border border-white/5 font-bold text-slate-400 uppercase">
+                                                                {task.assignee?.name?.charAt(0) || '?'}
+                                                            </div>
+                                                            <p className="text-[9px] font-black text-slate-500 uppercase">{task.assignee?.name || 'Unassigned'}</p>
+                                                        </div>
+                                                    </div>
+                                                </motion.div>
+                                            ))}
+                                            {(tasks || []).filter(t => t.status === status).length === 0 && (
+                                                <div className="h-20 flex items-center justify-center border border-dashed border-white/5 rounded-2xl opacity-20">
+                                                    <span className="text-[8px] font-black uppercase tracking-widest">No Active Tasks</span>
                                                 </div>
-                                            </div>
+                                            )}
                                         </div>
-                                    </motion.div>
-                                )) : (
-                                    <div className="md:col-span-2 py-20 text-center glass-card border-dashed border-white/5 bg-white/[0.01]">
-                                        <History className="w-12 h-12 mx-auto mb-4 text-slate-800" />
-                                        <h3 className="text-sm font-bold text-slate-500">No tactical objectives pinned.</h3>
                                     </div>
-                                )}
+                                ))}
                             </div>
                         </div>
-                    ) : (
+                    )}
+
+                    {workspaceTab === 'chat' && (
+                        <div className="glass-card bg-slate-900/40 border-white/5 flex flex-col h-[600px] overflow-hidden">
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth">
+                                {(messages || []).map((msg, i) => (
+                                    <div key={msg._id || i} className={`flex flex-col ${msg.sender?._id === user?._id ? 'items-end' : 'items-start'}`}>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            {msg.sender._id !== user._id && <span className="text-[8px] font-black text-primary-500 uppercase">{msg.sender.name}</span>}
+                                            <span className="text-[7px] text-slate-600 font-bold">{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                        <div className={`max-w-[80%] p-4 rounded-2xl text-xs font-medium ${msg.sender._id === user._id ? 'bg-primary-600 text-white rounded-tr-none' : 'bg-white/5 text-slate-300 rounded-tl-none border border-white/5'}`}>
+                                            {msg.text}
+                                        </div>
+                                    </div>
+                                ))}
+                                <div ref={chatEndRef} />
+                            </div>
+
+                            <div className="p-4 bg-slate-950/50 border-t border-white/5 space-y-3">
+                                {Object.values(typingUsers).filter(val => val).length > 0 && (
+                                    <p className="text-[8px] font-black text-primary-400 uppercase tracking-widest animate-pulse px-2">
+                                        {Object.values(typingUsers).filter(val => val).join(', ')} typing...
+                                    </p>
+                                )}
+                                <form onSubmit={handleSendMessage} className="relative">
+                                    <input
+                                        type="text"
+                                        placeholder="Transmit tactical brief..."
+                                        className="w-full bg-slate-900 border border-white/10 rounded-xl py-4 pl-6 pr-14 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                        value={chatMessage}
+                                        onChange={(e) => {
+                                            setChatMessage(e.target.value);
+                                            socket.emit('team:typing', { teamId: team?._id, isTyping: (e.target.value || "").length > 0 });
+                                        }}
+                                        onBlur={() => socket.emit('team:typing', { teamId: team?._id, isTyping: false })}
+                                    />
+                                    <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-all">
+                                        <Send className="w-4 h-4" />
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {workspaceTab === 'activity' && (
+                        <div className="space-y-6">
+                            <h4 className="text-xl font-black text-white uppercase tracking-tighter px-4 flex items-center gap-3">
+                                <Activity className="w-6 h-6 text-primary-500" />
+                                Mission Log
+                            </h4>
+                            <div className="space-y-4">
+                                {(activities || []).map((activity) => (
+                                    <div key={activity._id} className="p-5 bg-slate-900/40 border border-white/5 rounded-2xl flex items-start gap-4 hover:bg-slate-900 transition-all border-l-2 border-l-primary-500">
+                                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center border border-white/5 mt-1">
+                                            {activity.type === 'TASK_CREATED' ? <Plus className="w-4 h-4 text-emerald-500" /> :
+                                                activity.type === 'TASK_UPDATED' ? <History className="w-4 h-4 text-primary-500" /> :
+                                                    activity.type === 'PROJECT_LOCKED' ? <Lock className="w-4 h-4 text-red-500" /> :
+                                                        <Activity className="w-4 h-4 text-slate-500" />}
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-white uppercase tracking-tight">{activity.description}</p>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <span className="text-[9px] font-black text-slate-500 uppercase">{activity.user?.name}</span>
+                                                <span className="w-1 h-1 bg-slate-700 rounded-full" />
+                                                <span className="text-[9px] font-black text-slate-600 uppercase italic">
+                                                    {new Date(activity.createdAt).toLocaleString()}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {workspaceTab === 'assets' && (
                         <div className="space-y-6">
                             <h4 className="text-xl font-black text-white uppercase tracking-tighter px-4">Shared Intelligence</h4>
                             <div className="grid grid-cols-1 gap-4">
-                                {assets.map(asset => (
+                                {(assets || []).map(asset => (
                                     <div key={asset._id} className="p-5 bg-slate-900/40 border border-white/5 rounded-2xl flex items-center justify-between group hover:bg-slate-900 transition-all">
                                         <div className="flex items-center gap-5">
                                             <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center border border-white/5 group-hover:bg-primary-500/10 group-hover:border-primary-500/20 transition-all">
@@ -579,6 +729,57 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
                                     </div>
                                 </form>
                             </div>
+                        </div>
+                    )}
+
+                    {workspaceTab === 'evaluation' && (
+                        <div className="space-y-6">
+                            <h4 className="text-xl font-black text-white uppercase tracking-tighter flex items-center gap-3 px-4">
+                                <Trophy className="w-6 h-6 text-amber-500" />
+                                Project Assessment
+                            </h4>
+
+                            {evaluation ? (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="md:col-span-1 glass-card p-10 flex flex-col items-center justify-center text-center space-y-4 border-primary-500/30 bg-primary-500/5">
+                                        <div className="w-24 h-24 rounded-[2rem] bg-primary-600 flex items-center justify-center shadow-2xl shadow-primary-600/40 border border-primary-400/50">
+                                            <span className="text-4xl font-black text-white">{evaluation.grade}</span>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Squad Grade</p>
+                                            <p className="text-sm font-bold text-white uppercase italic">"{evaluation.grade === 'A+' ? 'Legendary' : evaluation.grade === 'A' ? 'Elite' : 'Operational'}"</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="md:col-span-2 space-y-6">
+                                        <div className="glass-card p-8 border-white/5 bg-slate-900/40">
+                                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Command Feedback</p>
+                                            <p className="text-slate-300 text-xs leading-relaxed font-medium italic">
+                                                {evaluation.feedback || "The evaluation is complete. Command has no additional tactical notes at this time."}
+                                            </p>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {evaluation?.criteria && Object.entries(evaluation.criteria).map(([key, val]) => (
+                                                <div key={key} className="glass-card p-4 border-white/5 bg-slate-900/40">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                                                        <span className="text-[10px] font-black text-primary-500">{val}/10</span>
+                                                    </div>
+                                                    <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-primary-500 shadow-[0_0_10px_rgba(59,130,246,0.5)]" style={{ width: `${val * 10}%` }} />
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="py-20 text-center glass-card border-dashed border-white/5 bg-white/[0.01]">
+                                    <Star className="w-12 h-12 mx-auto mb-4 text-slate-800 opacity-20" />
+                                    <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic">Node assessment pending faculty verification.</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -607,14 +808,14 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
                     <div className="bg-slate-900/40 border border-white/5 p-8 rounded-[2rem]">
                         <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6 px-1">Specialist Roster</h4>
                         <div className="space-y-3">
-                            {team.members.map(member => (
-                                <div key={member.user._id} className="flex items-center justify-between group">
+                            {(team?.members || []).map(member => (
+                                <div key={member.user?._id} className="flex items-center justify-between group">
                                     <div className="flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-[10px] font-black text-slate-500 border border-white/5">
-                                            {member.user.name.charAt(0)}
+                                            {member.user?.name?.charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="text-[11px] font-black text-white uppercase group-hover:text-primary-400 transition-colors">{member.user.name}</p>
+                                            <p className="text-[11px] font-black text-white uppercase group-hover:text-primary-400 transition-colors">{member.user?.name}</p>
                                             <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tighter">{member.role}</p>
                                         </div>
                                     </div>
@@ -659,7 +860,7 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets }) => {
                                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Assign Specialist</label>
                                         <select className="w-full bg-slate-950 border border-white/5 rounded-xl p-4 text-xs text-white" value={newTask.assignee} onChange={e => setNewTask({ ...newTask, assignee: e.target.value })}>
                                             <option value="">Mission Default</option>
-                                            {team.members.map(m => <option key={m.user._id} value={m.user._id}>{m.user.name}</option>)}
+                                            {(team?.members || []).map(m => <option key={m.user?._id} value={m.user?._id}>{m.user?.name}</option>)}
                                         </select>
                                     </div>
                                 </div>

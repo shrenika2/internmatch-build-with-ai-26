@@ -30,7 +30,7 @@ const ExperienceList = () => {
             // Extract unique companies
             const uniqueCompanies = [];
             const seen = new Set();
-            data.forEach(opp => {
+            (data || []).forEach(opp => {
                 if (opp.postedBy && !seen.has(opp.postedBy._id)) {
                     seen.add(opp.postedBy._id);
                     uniqueCompanies.push(opp.postedBy);
@@ -46,8 +46,8 @@ const ExperienceList = () => {
         try {
             setLoading(true);
             const { data } = await API.get(`/experience/company/${selectedCompany}?page=${page}`);
-            setExperiences(data.experiences);
-            setTotalPages(data.pages);
+            setExperiences(data?.experiences || []);
+            setTotalPages(data?.pages || 1);
         } catch (err) {
             console.error('Failed to fetch experiences', err);
         } finally {
@@ -74,7 +74,7 @@ const ExperienceList = () => {
                     className="bg-slate-950 border border-white/10 rounded-xl px-6 py-3 text-xs text-white uppercase font-bold focus:border-emerald-500 transition-all outline-none md:w-64"
                 >
                     <option value="">Select Opportunity Node</option>
-                    {companies.map(c => (
+                    {(companies || []).map(c => (
                         <option key={c._id} value={c._id}>{c.name}</option>
                     ))}
                 </select>
@@ -84,10 +84,10 @@ const ExperienceList = () => {
                 <div className="py-20 text-center"><p className="text-slate-500 animate-pulse uppercase font-black tracking-widest">Retrieving logs...</p></div>
             ) : selectedCompany ? (
                 <div className="space-y-6">
-                    {experiences.length > 0 ? (
+                    {(experiences || []).length > 0 ? (
                         <>
                             <div className="grid grid-cols-1 gap-6">
-                                {experiences.map((exp) => (
+                                {(experiences || []).map((exp) => (
                                     <motion.div
                                         key={exp._id}
                                         initial={{ opacity: 0, y: 10 }}

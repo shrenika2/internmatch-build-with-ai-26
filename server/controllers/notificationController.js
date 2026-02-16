@@ -5,15 +5,29 @@ const Notification = require('../models/Notification');
 // @route   GET /api/notifications
 // @access  Private
 const getNotifications = asyncHandler(async (req, res) => {
-    const notifications = await Notification.find({ recipient: req.user._id })
-        .populate('sender', 'name role')
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const notifications = await Notification.find({ userId: req.user._id })
+        .populate('sender', 'name role avatar')
         .sort('-createdAt')
-        .limit(20);
-    res.json(notifications);
+        .skip(skip)
+        .limit(limit);
+
+    const total = await Notification.countDocuments({ userId: req.user._id });
+
+    res.json({
+        notifications,
+        page,
+        pages: Math.ceil(total / limit),
+        total,
+        unreadCount: await Notification.countDocuments({ userId: req.user._id, read: false })
+    });
 });
 
 // @desc    Mark notification as read
-// @route   PUT /api/notifications/:id/read
+// @route   PATCH /api/notifications/:id/read
 // @access  Private
 const markAsRead = asyncHandler(async (req, res) => {
     const notification = await Notification.findById(req.params.id);
@@ -23,26 +37,26 @@ const markAsRead = asyncHandler(async (req, res) => {
         throw new Error('Notification not found');
     }
 
-    if (notification.recipient.toString() !== req.user._id.toString()) {
+    if (notification.userId.toString() !== req.user._id.toString()) {
         res.status(403);
         throw new Error('Not authorized');
     }
 
-    notification.isRead = true;
+    notification.read = true;
     await notification.save();
 
     res.json(notification);
 });
 
 // @desc    Mark all notifications as read
-// @route   PUT /api/notifications/mark-all-read
+// @route   PATCH /api/notifications/read
 // @access  Private
 const markAllRead = asyncHandler(async (req, res) => {
     await Notification.updateMany(
-        { recipient: req.user._id, isRead: false },
-        { $set: { isRead: true } }
+        { userId: req.user._id, read: false },
+        { $set: { read: true } }
     );
-    res.json({ message: 'All notifications marked as read' });
+    res.json({ success: true, message: 'All notifications marked as read' });
 });
 
 module.exports = {

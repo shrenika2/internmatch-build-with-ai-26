@@ -17,15 +17,15 @@ const bootstrapAdmin = async () => {
         // Create admin with plain password (Model handles hashing)
         await User.create({
             name: 'System Administrator',
-            email: 'admin@college.edu',
-            password: 'admin123',
+            email: 'admin@careergrid.com',
+            password: 'admin@12345',
             role: 'admin',
             status: 'approved'
         });
 
         console.log('Admin account created successfully.');
-        console.log('Email: admin@college.edu');
-        console.log('Password: admin123');
+        console.log('Email: admin@careergrid.com');
+        console.log('Password: admin@12345');
 
         process.exit();
     } catch (err) {

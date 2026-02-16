@@ -2,7 +2,12 @@ const asyncHandler = require('express-async-handler');
 const Team = require('../models/Team');
 const Opportunity = require('../models/Opportunity');
 const User = require('../models/User');
-const Notification = require('../models/Notification');
+const notificationService = require('../services/notificationService');
+const TeamActivity = require('../models/TeamActivity');
+const TeamChatMessage = require('../models/TeamChatMessage');
+const Task = require('../models/Task');
+const TeamAsset = require('../models/TeamAsset');
+const { logAction } = require('../utils/auditService');
 
 // @desc    Create team
 // @route   POST /api/teams
@@ -16,15 +21,37 @@ const createTeam = asyncHandler(async (req, res) => {
         throw new Error('Opportunity not found');
     }
 
+    if (opportunity.type !== 'project') {
+        res.status(400);
+        throw new Error('Teams can only be formed for research projects');
+    }
+
     const team = await Team.create({
         name,
         opportunity: opportunityId,
         leader: req.user._id,
+        mentor: opportunity.postedBy,
         members: [{
             user: req.user._id,
             role: 'Lead',
             status: 'accepted'
         }]
+    });
+
+    logAction({
+        userId: req.user._id,
+        action: 'TEAM_CREATE',
+        entityType: 'Team',
+        entityId: team._id,
+        metadata: { teamName: name, opportunityId },
+        req
+    });
+
+    await TeamActivity.create({
+        team: team._id,
+        user: req.user._id,
+        type: 'MEMBER_JOINED',
+        description: `${req.user.name} established the team node.`
     });
 
     res.status(201).json(team);
@@ -80,20 +107,17 @@ const inviteMember = asyncHandler(async (req, res) => {
 
     await team.save();
 
+    const io = req.app.get('socketio');
+
     // Notify user
-    const notification = await Notification.create({
-        recipient: user._id,
-        sender: req.user._id,
+    await notificationService.sendNotification({
+        userId: user._id,
+        senderId: req.user._id,
         type: 'system',
         title: 'Team Invitation',
         message: `${req.user.name} invited you to join team "${team.name}"`,
         link: `/student/dashboard`
-    });
-
-    const io = req.app.get('socketio');
-    if (io) {
-        io.to(user._id.toString()).emit('notification', notification);
-    }
+    }, io);
 
     res.json(team);
 });
@@ -123,20 +147,17 @@ const respondToInvite = asyncHandler(async (req, res) => {
 
     await team.save();
 
+    const io = req.app.get('socketio');
+
     // Notify lead
-    const notification = await Notification.create({
-        recipient: team.leader,
-        sender: req.user._id,
+    await notificationService.sendNotification({
+        userId: team.leader,
+        senderId: req.user._id,
         type: 'system',
         title: 'Invitation Response',
         message: `${req.user.name} has ${status} your invitation for team "${team.name}"`,
         link: `/student/dashboard`
-    });
-
-    const io = req.app.get('socketio');
-    if (io) {
-        io.to(team.leader.toString()).emit('notification', notification);
-    }
+    }, io);
 
     res.json(team);
 });
@@ -159,6 +180,23 @@ const toggleLock = asyncHandler(async (req, res) => {
 
     team.isLocked = !team.isLocked;
     await team.save();
+
+    logAction({
+        userId: req.user._id,
+        action: 'TEAM_LOCK_TOGGLE',
+        entityType: 'Team',
+        entityId: team._id,
+        metadata: { isLocked: team.isLocked },
+        req
+    });
+
+    await TeamActivity.create({
+        team: team._id,
+        user: req.user._id,
+        type: 'PROJECT_LOCKED',
+        description: `Project synchronization ${team.isLocked ? 'locked' : 'unlocked'} by Lead.`,
+        metadata: { isLocked: team.isLocked }
+    });
 
     res.json(team);
 });
@@ -206,8 +244,60 @@ const updateMemberRole = asyncHandler(async (req, res) => {
     res.json(team);
 });
 
-const Task = require('../models/Task');
-const TeamAsset = require('../models/TeamAsset');
+// ==========================================
+// CHAT & ACTIVITY ENGINE
+// ==========================================
+
+// @desc    Get team activity feed
+// @route   GET /api/teams/:id/activity
+// @access  Private (Team Members)
+const getTeamActivity = asyncHandler(async (req, res) => {
+    const activities = await TeamActivity.find({ team: req.params.id })
+        .populate('user', 'name avatar')
+        .sort('-createdAt')
+        .limit(50);
+    res.json(activities);
+});
+
+// @desc    Get team chat messages
+// @route   GET /api/teams/:id/chat
+// @access  Private (Team Members)
+const getTeamMessages = asyncHandler(async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = 50;
+    const skip = (page - 1) * limit;
+
+    const messages = await TeamChatMessage.find({ team: req.params.id })
+        .populate('sender', 'name avatar role')
+        .sort('-createdAt')
+        .skip(skip)
+        .limit(limit);
+
+    res.json(messages.reverse());
+});
+
+// @desc    Send team chat message
+// @route   POST /api/teams/:id/chat
+// @access  Private (Team Members)
+const sendTeamMessage = asyncHandler(async (req, res) => {
+    const { text, attachments } = req.body;
+    const message = await TeamChatMessage.create({
+        team: req.params.id,
+        sender: req.user._id,
+        text,
+        attachments
+    });
+
+    const populatedMessage = await TeamChatMessage.findById(message._id)
+        .populate('sender', 'name avatar role');
+
+    const io = req.app.get('socketio');
+    if (io) {
+        io.to(`project:${req.params.id}`).emit('team:message', populatedMessage);
+    }
+
+    res.status(201).json(populatedMessage);
+});
 
 // @desc    Get team tasks
 // @route   GET /api/teams/:id/tasks
@@ -233,6 +323,14 @@ const createTeamTask = asyncHandler(async (req, res) => {
 
     const populatedTask = await Task.findById(task._id).populate('assignee', 'name email avatar');
 
+    await TeamActivity.create({
+        team: req.params.id,
+        user: req.user._id,
+        type: 'TASK_CREATED',
+        description: `New objective deployed: ${title}`,
+        metadata: { taskId: task._id }
+    });
+
     const io = req.app.get('socketio');
     if (io) {
         io.to(`project:${req.params.id}`).emit('task_created', populatedTask);
@@ -241,15 +339,30 @@ const createTeamTask = asyncHandler(async (req, res) => {
     res.status(201).json(populatedTask);
 });
 
-// @desc    Update team task status/details
-// @route   PUT /api/teams/tasks/:taskId
-// @access  Private (Team Members)
 const updateTeamTask = asyncHandler(async (req, res) => {
-    const task = await Task.findByIdAndUpdate(req.params.taskId, req.body, { new: true }).populate('assignee', 'name email avatar');
-
-    if (!task) {
+    const oldTask = await Task.findById(req.params.taskId);
+    if (!oldTask) {
         res.status(404);
         throw new Error('Task not found');
+    }
+
+    const task = await Task.findByIdAndUpdate(req.params.taskId, req.body, { new: true }).populate('assignee', 'name email avatar');
+
+    // Track status change
+    if (req.body.status && req.body.status !== oldTask.status) {
+        task.statusHistory.push({
+            status: req.body.status,
+            updatedBy: req.user._id
+        });
+        await task.save();
+
+        await TeamActivity.create({
+            team: task.team,
+            user: req.user._id,
+            type: 'TASK_UPDATED',
+            description: `Objective status updated to ${req.body.status}: ${task.title}`,
+            metadata: { taskId: task._id, oldStatus: oldTask.status, newStatus: req.body.status }
+        });
     }
 
     const io = req.app.get('socketio');
@@ -283,6 +396,14 @@ const createTeamAsset = asyncHandler(async (req, res) => {
 
     const populatedAsset = await TeamAsset.findById(asset._id).populate('uploadedBy', 'name');
 
+    await TeamActivity.create({
+        team: req.params.id,
+        user: req.user._id,
+        type: 'ASSET_UPLOADED',
+        description: `Shared resource uploaded: ${name}`,
+        metadata: { assetId: asset._id }
+    });
+
     const io = req.app.get('socketio');
     if (io) {
         io.to(`project:${req.params.id}`).emit('asset_created', populatedAsset);
@@ -302,5 +423,8 @@ module.exports = {
     createTeamTask,
     updateTeamTask,
     getTeamAssets,
-    createTeamAsset
+    createTeamAsset,
+    getTeamActivity,
+    getTeamMessages,
+    sendTeamMessage
 };

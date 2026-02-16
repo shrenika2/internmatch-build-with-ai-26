@@ -1,16 +1,12 @@
 const asyncHandler = require('express-async-handler');
-const StudentProfile = require('../models/StudentProfile');
 const Opportunity = require('../models/Opportunity');
-const Application = require('../models/Application'); // Assuming Application model exists
-
-// @desc    Get student aggregate metrics for dashboard
+const Application = require('../models/Application');
 // @route   GET /api/student/metrics
 // @access  Private (Student)
 const getStudentMetrics = asyncHandler(async (req, res) => {
     const studentId = req.user._id;
-
-    // 1. Fetch Profile for completeness and skills
-    const profile = await StudentProfile.findOne({ user: studentId });
+    // With unified architecture, profile is embedded in the user object
+    const profile = req.user.studentProfile;
 
     // 2. Fetch Applications for deployment status and successes
     const applications = await Application.find({ student: studentId })

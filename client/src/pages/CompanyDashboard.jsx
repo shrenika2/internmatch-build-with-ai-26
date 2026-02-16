@@ -38,9 +38,9 @@ const CompanyDashboard = () => {
                 API.get('/company/opportunities'),
                 API.get('/company/applicants')
             ]);
-            setStats(statsRes.data);
-            setOpportunities(oppsRes.data);
-            setApplicants(appsRes.data);
+            setStats(statsRes.data || null);
+            setOpportunities(oppsRes.data || []);
+            setApplicants(appsRes.data || []);
         } catch (err) {
             console.error('Data fetch failed:', err);
         } finally {
@@ -116,8 +116,8 @@ const CompanyDashboard = () => {
 
     const menuItems = [
         { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-        { id: 'opportunities', label: 'My Postings', icon: Briefcase, count: opportunities.length },
-        { id: 'applicants', label: 'Applicants', icon: Users, count: applicants.length },
+        { id: 'opportunities', label: 'My Postings', icon: Briefcase, count: opportunities?.length || 0 },
+        { id: 'applicants', label: 'Applicants', icon: Users, count: applicants?.length || 0 },
         { id: 'profile', label: 'Company Profile', icon: User },
         { id: 'settings', label: 'Settings', icon: Settings },
     ];
@@ -139,7 +139,7 @@ const CompanyDashboard = () => {
                 </div>
 
                 <nav className="flex-1 p-6 space-y-2 overflow-y-auto">
-                    {menuItems.map(item => (
+                    {(menuItems || []).map(item => (
                         <button
                             key={item.id}
                             onClick={() => setActiveSection(item.id)}
@@ -177,7 +177,7 @@ const CompanyDashboard = () => {
                 <header className="flex justify-between items-center mb-12">
                     <div>
                         <h2 className="text-4xl font-black text-white tracking-tight uppercase mb-1">
-                            {menuItems.find(m => m.id === activeSection).label}
+                            {(menuItems || []).find(m => m.id === activeSection)?.label}
                         </h2>
                         <p className="text-slate-500 font-medium italic">Command Center: {user.companyProfile?.companyName || user.name}</p>
                     </div>
@@ -206,8 +206,8 @@ const CompanyDashboard = () => {
                                         Rapid Applicant Stream
                                     </h3>
                                     <div className="space-y-4">
-                                        {stats.recentApplications.length > 0 ? (
-                                            stats.recentApplications.map((app, i) => (
+                                        {(stats.recentApplications || []).length > 0 ? (
+                                            (stats.recentApplications || []).map((app, i) => (
                                                 <div key={i} className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-2xl group hover:border-emerald-500/30 transition-all">
                                                     <div>
                                                         <p className="text-sm font-bold text-white uppercase">{app.student?.name}</p>
@@ -242,7 +242,7 @@ const CompanyDashboard = () => {
                     {activeSection === 'opportunities' && (
                         <motion.div key="opportunities" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6">
                             <div className="grid grid-cols-1 gap-4">
-                                {opportunities.map(opp => (
+                                {(opportunities || []).map(opp => (
                                     <div key={opp._id} className="glass-card p-8 border-white/5 bg-slate-900/40 hover:bg-slate-900/60 transition-all group">
                                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
                                             <div className="space-y-3">
@@ -284,7 +284,7 @@ const CompanyDashboard = () => {
                                         )}
                                     </div>
                                 ))}
-                                {opportunities.length === 0 && (
+                                {(opportunities || []).length === 0 && (
                                     <div className="py-20 glass-card border-dashed border-white/10 text-center">
                                         <p className="text-slate-600 italic">No active opportunities deployed to grid.</p>
                                     </div>
@@ -301,22 +301,48 @@ const CompanyDashboard = () => {
                                         <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
                                             <th className="px-8 py-6">Candidate Node</th>
                                             <th className="px-8 py-6">Target Deployment</th>
+                                            <th className="px-8 py-6 text-center">Resume</th>
                                             <th className="px-8 py-6 text-center">Audit Status</th>
                                             <th className="px-8 py-6 text-right">Protocol</th>
+
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
-                                        {applicants.map(app => (
+                                        {(applicants || []).map(app => (
                                             <tr key={app._id} className="hover:bg-white/[0.01] transition-all group">
                                                 <td className="px-8 py-6">
-                                                    <p className="text-sm font-black text-white uppercase">{app.student?.name}</p>
-                                                    <p className="text-[10px] text-slate-600 font-medium">{app.student?.email}</p>
+                                                    <div className="flex items-center gap-3">
+                                                        <div>
+                                                            <p className="text-sm font-black text-white uppercase">{app.student?.name}</p>
+                                                            <p className="text-[10px] text-slate-600 font-medium">{app.student?.email}</p>
+                                                        </div>
+                                                        {app.skillMatchScore > 0 && (
+                                                            <div className="px-2 py-1 bg-primary-500/10 border border-primary-500/20 rounded-lg">
+                                                                <p className="text-[9px] font-black text-primary-500 uppercase tracking-tighter">{app.skillMatchScore}% MATCH</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-8 py-6">
                                                     <p className="text-[11px] font-black text-slate-400 uppercase tracking-tight">{app.opportunity?.title}</p>
                                                     <span className="text-[9px] font-black text-emerald-500/50 uppercase italic">{app.opportunity?.type}</span>
                                                 </td>
                                                 <td className="px-8 py-6 text-center">
+                                                    {app.resume ? (
+                                                        <a
+                                                            href={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'}/${app.resume}`}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="flex items-center justify-center gap-2 text-[10px] font-black uppercase text-primary-500 hover:text-white transition-colors"
+                                                        >
+                                                            <FileText className="w-4 h-4" /> View
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-[10px] text-slate-700 uppercase font-black">Missing</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-8 py-6 text-center">
+
                                                     <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${app.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-500' :
                                                         app.status === 'shortlisted' ? 'bg-blue-500/10 text-blue-500' :
                                                             app.status === 'rejected' ? 'bg-red-500/10 text-red-500' :
@@ -325,7 +351,12 @@ const CompanyDashboard = () => {
                                                         {app.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-8 py-6 text-right space-x-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
+                                                <td className="px-8 py-6 text-right space-x-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0 text-nowrap">
+                                                    <button
+                                                        onClick={() => navigate(`/company/student-profile/${app.student?._id}`)}
+                                                        className="p-2 bg-emerald-600/10 text-emerald-500 hover:bg-emerald-600 hover:text-white rounded-lg transition-all"
+                                                        title="View Profile"
+                                                    ><ExternalLink className="w-4 h-4" /></button>
                                                     <button
                                                         onClick={() => handleApplicationStatus(app._id, 'shortlisted')}
                                                         className="p-2 bg-blue-600/10 text-blue-500 hover:bg-blue-600 hover:text-white rounded-lg transition-all"
@@ -339,7 +370,7 @@ const CompanyDashboard = () => {
                                                 </td>
                                             </tr>
                                         ))}
-                                        {applicants.length === 0 && (
+                                        {(applicants || []).length === 0 && (
                                             <tr>
                                                 <td colSpan="4" className="px-8 py-20 text-center text-slate-600 italic">No inbound application traffic detected.</td>
                                             </tr>

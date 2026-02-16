@@ -37,7 +37,7 @@ const PracticeModuleManager = ({ context, contextId }) => {
                 ? `/practice/company-specific/${userInfo._id}`
                 : `/practice/faculty-specific/${userInfo._id}`;
             const { data } = await API.get(endpoint);
-            setMaterials(data);
+            setMaterials(data || []);
         } catch (err) {
             console.error('Failed to fetch materials', err);
         } finally {
@@ -96,7 +96,7 @@ const PracticeModuleManager = ({ context, contextId }) => {
         if (!window.confirm('Are you sure you want to delete this material?')) return;
         try {
             await API.delete(`/practice/material/${id}`);
-            setMaterials(materials.filter(m => m._id !== id));
+            setMaterials((materials || []).filter(m => m._id !== id));
         } catch (err) {
             alert('Failed to delete material');
         }
@@ -205,7 +205,7 @@ const PracticeModuleManager = ({ context, contextId }) => {
             </AnimatePresence>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {materials.length > 0 ? materials.map((m) => (
+                {(materials || []).length > 0 ? (materials || []).map((m) => (
                     <div key={m._id} className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl flex items-center justify-between group hover:border-emerald-500/30 transition-all">
                         <div className="flex items-center gap-4">
                             <div className="p-2 bg-emerald-500/10 rounded-lg">
@@ -218,7 +218,7 @@ const PracticeModuleManager = ({ context, contextId }) => {
                         </div>
                         <div className="flex items-center gap-2">
                             <a
-                                href={m.type === 'link' ? m.fileUrl : `${import.meta.env.VITE_SERVER_URL || 'http://localhost:5000'}${m.fileUrl}`}
+                                href={m.type === 'link' ? m.fileUrl : `${import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000'}${m.fileUrl}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="p-2 bg-white/5 text-slate-600 hover:text-white rounded-lg transition-all"

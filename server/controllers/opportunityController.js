@@ -1,6 +1,10 @@
 const asyncHandler = require('express-async-handler');
 const Opportunity = require('../models/Opportunity');
 const Application = require('../models/Application');
+const settingsService = require('../utils/settingsService');
+const { logAction } = require('../utils/auditService');
+const notificationService = require('../services/notificationService');
+const aiService = require('../services/aiService');
 
 // @desc    Create new opportunity
 // @route   POST /api/opportunities
@@ -35,6 +39,15 @@ const createOpportunity = asyncHandler(async (req, res) => {
         duration,
         status,
         facultyApprovalRequired: !!facultyApprovalRequired
+    });
+
+    logAction({
+        userId: req.user._id,
+        action: 'OPPORTUNITY_CREATE',
+        entityType: 'Opportunity',
+        entityId: opportunity._id,
+        metadata: { title, type, status },
+        req
     });
 
     const populatedOpp = await Opportunity.findById(opportunity._id).populate('postedBy', 'name role companyProfile facultyProfile');
@@ -85,11 +98,21 @@ const getOpportunityById = asyncHandler(async (req, res) => {
     res.json(opportunity);
 });
 
-// @desc    Apply for opportunity
+// @desc    Apply for opportunity (ARCHITECTURAL UPDATE: Reuses profile resume)
 // @route   POST /api/opportunities/:id/apply
 // @access  Private (Student only)
 const applyForOpportunity = asyncHandler(async (req, res) => {
-    const { resume, coverLetter } = req.body;
+    const { coverLetter } = req.body;
+
+    // 1. Fetch persistent resume data from User Model
+    const user = await User.findById(req.user._id);
+    const studentProfile = user.studentProfile;
+
+    if (!studentProfile.resumeFileUrl) {
+        res.status(400);
+        throw new Error('No resume found on profile. Please upload your resume in the Student Profile section first.');
+    }
+
     const settings = await settingsService.getSettings();
     const opportunity = await Opportunity.findById(req.params.id);
 
@@ -103,7 +126,7 @@ const applyForOpportunity = asyncHandler(async (req, res) => {
         throw new Error('This opportunity is no longer accepting applications');
     }
 
-    // 1. Max Applications Check
+    // 2. Max Applications Check
     const activeApplicationsCount = await Application.countDocuments({
         student: req.user._id,
         status: { $in: ['applied', 'shortlisted'] }
@@ -114,7 +137,7 @@ const applyForOpportunity = asyncHandler(async (req, res) => {
         throw new Error(`Platform Limit: You have reached the maximum of ${settings.maxApplicationsPerStudent} active applications.`);
     }
 
-    // 2. Application Cooldown Check
+    // 3. Application Cooldown Check
     const lastApplication = await Application.findOne({ student: req.user._id }).sort('-createdAt');
     if (lastApplication && settings.applicationCooldownDays > 0) {
         const daysSinceLast = (Date.now() - new Date(lastApplication.createdAt).getTime()) / (1000 * 60 * 60 * 24);
@@ -125,7 +148,7 @@ const applyForOpportunity = asyncHandler(async (req, res) => {
         }
     }
 
-    // 3. Multi-offer check if relevant (only if already accepted elsewhere)
+    // 4. Multi-offer check
     if (!settings.allowMultipleActiveOffers) {
         const hasActiveOffer = await Application.findOne({
             student: req.user._id,
@@ -133,21 +156,18 @@ const applyForOpportunity = asyncHandler(async (req, res) => {
         });
         if (hasActiveOffer) {
             res.status(400);
-            throw new Error('Platform Policy: Multiple active offers are disabled. Please accept or reject your existing offer first.');
+            throw new Error('Platform Policy: Multiple active offers are disabled.');
         }
     }
 
-    // Basic eligibility check
+    // 5. Basic eligibility check
     if (opportunity.eligibilityCriteria) {
-        const student = req.user.studentProfile;
         const criteria = opportunity.eligibilityCriteria;
-
-        if (criteria.minYear && student.year < criteria.minYear) {
+        if (criteria.minYear && studentProfile.year < criteria.minYear) {
             res.status(400);
             throw new Error(`Minimum year requirement not met (Required: ${criteria.minYear})`);
         }
-
-        if (criteria.branches && criteria.branches.length > 0 && !criteria.branches.includes(student.branch)) {
+        if (criteria.branches && criteria.branches.length > 0 && !criteria.branches.includes(studentProfile.branch)) {
             res.status(400);
             throw new Error('Your branch is not eligible for this opportunity');
         }
@@ -163,32 +183,42 @@ const applyForOpportunity = asyncHandler(async (req, res) => {
         throw new Error('You have already applied for this opportunity');
     }
 
+    // 6. Calculate Match Percentage using PERSISTENT skills
+    const parsedSkills = studentProfile.parsedSkills || [];
+    const matchScore = aiService.calculateMatchScore(parsedSkills, opportunity.requiredSkills || []);
+
     const application = await Application.create({
         opportunity: req.params.id,
         student: req.user._id,
-        resume,
+        resume: studentProfile.resumeFileUrl, // Reusing stored URL
+        resumeSkills: parsedSkills, // Reusing persistent data
+        skillMatchScore: matchScore,
         coverLetter,
+    });
+
+    logAction({
+        userId: req.user._id,
+        action: 'OPPORTUNITY_APPLY_PERSISTENT',
+        entityType: 'Application',
+        entityId: application._id,
+        metadata: { opportunityTitle: opportunity.title, matchScore },
+        req
     });
 
     const populatedOpp = await Opportunity.findById(opportunity._id).populate('postedBy', 'role');
     const ownerRole = populatedOpp.postedBy.role;
 
+    const io = req.app.get('socketio');
+
     // Create notification for the opportunity owner
-    const Notification = require('../models/Notification');
-    const notification = await Notification.create({
-        recipient: opportunity.postedBy,
-        sender: req.user._id,
+    await notificationService.sendNotification({
+        userId: opportunity.postedBy,
+        senderId: req.user._id,
         type: 'application',
         title: 'New Application Received',
         message: `${req.user.name} has applied for "${opportunity.title}"`,
-        link: `/${ownerRole === 'faculty' ? 'faculty' : 'company'}/applications`,
-    });
-
-    // Real-time notification
-    const io = req.app.get('socketio');
-    if (io) {
-        io.to(opportunity.postedBy.toString()).emit('notification:new', notification);
-    }
+        link: `/${ownerRole === 'faculty' ? 'faculty' : 'company'}/applications`
+    }, io);
 
     res.status(201).json(application);
 });

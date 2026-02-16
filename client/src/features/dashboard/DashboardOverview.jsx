@@ -23,9 +23,9 @@ const DashboardOverview = () => {
                 API.get('/opportunities/my-applications'),
                 API.get('/student-profile/me').catch(() => ({ data: null }))
             ]);
-            setMetrics(metricsRes.data);
-            setApplications(appsRes.data);
-            setProfile(profileRes.data);
+            setMetrics(metricsRes.data || null);
+            setApplications(appsRes.data || []);
+            setProfile(profileRes.data || null);
         } catch (err) {
             console.error("Dashboard Sync Failed", err);
         } finally {
@@ -90,7 +90,7 @@ const DashboardOverview = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {applications.length > 0 ? applications.slice(0, 4).map(app => (
+                            {(applications || []).length > 0 ? (applications || []).slice(0, 4).map(app => (
                                 <div key={app._id} className="glass-card p-5 border-white/5 bg-slate-900/40 hover:bg-slate-900/60 transition-all flex items-center justify-between group">
                                     <div className="flex items-center gap-4">
                                         <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center font-bold text-slate-500 group-hover:text-primary-500 transition-colors uppercase">
@@ -189,7 +189,7 @@ const DashboardOverview = () => {
                             Critical Chronology
                         </h3>
                         <div className="space-y-4">
-                            {metrics?.upcomingDeadlines?.length > 0 ? metrics.upcomingDeadlines.map((d, i) => (
+                            {(metrics?.upcomingDeadlines || []).length > 0 ? (metrics?.upcomingDeadlines || []).map((d, i) => (
                                 <div key={i} className="flex gap-4 p-4 hover:bg-white/5 rounded-2xl transition-colors group">
                                     <div className="h-10 w-10 bg-slate-800 rounded-xl flex flex-col items-center justify-center shrink-0 border border-white/5">
                                         <span className="text-[10px] font-black text-white">{new Date(d.deadline).getDate()}</span>
@@ -212,7 +212,7 @@ const DashboardOverview = () => {
                             Optimization Insights
                         </h3>
                         <div className="space-y-4">
-                            {metrics?.insights?.map((insight, i) => (
+                            {(metrics?.insights || []).map((insight, i) => (
                                 <div key={i} className="p-4 bg-slate-950/50 rounded-2xl border border-white/5">
                                     <p className="text-[10px] text-slate-400 font-medium leading-relaxed italic mb-3">"{insight.text}"</p>
                                     <button className="text-[9px] font-black text-primary-500 uppercase hover:text-white transition-colors flex items-center gap-2">{insight.action} <ArrowRight className="w-3 h-3" /></button>

@@ -99,11 +99,11 @@ const AdminDashboard = () => {
                 API.get('/admin/applications'),
                 API.get('/experience/pending')
             ]);
-            setStats(statsRes.data);
-            setUsers(usersRes.data);
-            setOpportunities(oppsRes.data);
-            setApplications(appsRes.data);
-            setExperiences(expRes.data);
+            setStats(statsRes.data || null);
+            setUsers(usersRes.data || []);
+            setOpportunities(oppsRes.data || []);
+            setApplications(appsRes.data || []);
+            setExperiences(expRes.data || []);
         } catch (err) {
             console.error('Failed to fetch admin data', err);
         } finally {
@@ -117,7 +117,7 @@ const AdminDashboard = () => {
             if (action === 'delete') {
                 if (window.confirm('Are you sure? This action is permanent.')) {
                     await API.delete(`/admin/users/${userId}`);
-                    setUsers(prev => prev.filter(u => u._id !== userId));
+                    setUsers(prev => (prev || []).filter(u => u._id !== userId));
                 }
             } else {
                 await API.put(`/admin/${action}/${userId}`);
@@ -148,7 +148,7 @@ const AdminDashboard = () => {
         setActionLoading(id);
         try {
             await API.patch(`/experience/${id}/approve`, { status });
-            setExperiences(prev => prev.filter(e => e._id !== id));
+            setExperiences(prev => (prev || []).filter(e => e._id !== id));
         } catch (err) {
             alert('Moderation failed');
         } finally {
@@ -162,9 +162,9 @@ const AdminDashboard = () => {
         </div>
     );
 
-    const filteredUsers = users.filter(u =>
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredUsers = (users || []).filter(u =>
+        u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.email?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
 
@@ -185,10 +185,10 @@ const AdminDashboard = () => {
     const menuItems = [
         { id: 'overview', label: 'Analytics', icon: LayoutDashboard },
         { id: 'users', label: 'Identity Management', icon: Users },
-        { id: 'approvals', label: 'User Approvals', icon: CheckCircle2, count: users.filter(u => u.status === 'pending').length },
+        { id: 'approvals', label: 'User Approvals', icon: CheckCircle2, count: (users || []).filter(u => u.status === 'pending').length },
         { id: 'broadcast', label: 'Broadcast Protocol', icon: MessageSquare },
         { id: 'opportunities', label: 'Moderate Opportunities', icon: Briefcase },
-        { id: 'experiences', label: 'Experience Moderation', icon: MessageSquare, count: experiences.length },
+        { id: 'experiences', label: 'Experience Moderation', icon: MessageSquare, count: experiences?.length || 0 },
         { id: 'applications', label: 'Audit Trail', icon: ClipboardList },
         { id: 'logs', label: 'System Integrity', icon: Activity },
         { id: 'settings', label: 'Administration Settings', icon: Settings },
@@ -211,7 +211,7 @@ const AdminDashboard = () => {
                 </div>
 
                 <nav className="flex-1 p-6 space-y-2 overflow-y-auto custom-scrollbar">
-                    {menuItems.map(item => (
+                    {(menuItems || []).map(item => (
                         <button
                             key={item.id}
                             onClick={() => setActiveSection(item.id)}
@@ -291,7 +291,7 @@ const AdminDashboard = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                                 <div className="space-y-4">
                                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Urgent Actions</p>
-                                    {users.filter(u => u.status === 'pending').slice(0, 3).map(u => (
+                                    {(users || []).filter(u => u.status === 'pending').slice(0, 3).map(u => (
                                         <div key={u._id} className="flex items-center justify-between p-5 bg-white/[0.02] border border-white/5 rounded-3xl">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
@@ -328,7 +328,7 @@ const AdminDashboard = () => {
                                     <tr className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]"><th className="px-8 py-6">Identity</th><th className="px-8 py-6 text-center">Role</th><th className="px-8 py-6 text-center">Status</th><th className="px-8 py-6 text-right">Protocol</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
-                                    {filteredUsers.map(u => (
+                                    {(filteredUsers || []).map(u => (
                                         <tr key={u._id} className="hover:bg-white/[0.01] transition-colors group">
                                             <td className="px-8 py-6 text-white font-black">{u.name}<br /><span className="text-[10px] text-slate-500 font-medium">{u.email}</span></td>
                                             <td className="px-8 py-6 text-center"><span className="px-3 py-1 rounded-lg text-[9px] font-black uppercase bg-primary-600/10 text-primary-400">{u.role}</span></td>
@@ -433,7 +433,7 @@ const AdminDashboard = () => {
                                 <tr className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]"><th className="px-8 py-6">Student Cluster</th><th className="px-8 py-6">Target Node</th><th className="px-8 py-6 text-center">Timestamp</th><th className="px-8 py-6 text-center">Auth Status</th></tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
-                                {applications.map(app => (
+                                {(applications || []).map(app => (
                                     <tr key={app._id} className="hover:bg-white/[0.01]">
                                         <td className="px-8 py-6 text-white font-black">{app.student?.name}<br /><span className="text-[10px] text-slate-500">{app.student?.email}</span></td>
                                         <td className="px-8 py-6 text-white font-black">{app.opportunity?.title}<br /><span className="text-[10px] text-primary-500">{app.opportunity?.postedBy?.name}</span></td>
@@ -457,7 +457,7 @@ const AdminDashboard = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
-                                {users.filter(u => u.status === 'pending').map(u => (
+                                {(users || []).filter(u => u.status === 'pending').map(u => (
                                     <tr key={u._id} className="hover:bg-white/[0.01]">
                                         <td className="px-8 py-6 text-white font-black">{u.name}<br /><span className="text-primary-500 text-[10px]">{u.email}</span></td>
                                         <td className="px-8 py-6 text-center">
@@ -469,7 +469,7 @@ const AdminDashboard = () => {
                                         </td>
                                     </tr>
                                 ))}
-                                {users.filter(u => u.status === 'pending').length === 0 && (
+                                {(users || []).filter(u => u.status === 'pending').length === 0 && (
                                     <tr>
                                         <td colSpan="3" className="px-8 py-20 text-center text-slate-600 italic font-medium">
                                             No pending verification requests at this time.
@@ -483,7 +483,7 @@ const AdminDashboard = () => {
 
                 {activeSection === 'opportunities' && (
                     <div className="space-y-6">
-                        {opportunities.map(opp => (
+                        {(opportunities || []).map(opp => (
                             <div key={opp._id} className="bg-slate-900/40 border border-white/5 p-8 rounded-[2.5rem] flex justify-between items-center group">
                                 <div><h4 className="text-xl font-black text-white uppercase">{opp.title}</h4><p className="text-xs text-slate-500 font-bold tracking-widest uppercase mt-1">Managed by: {opp.postedBy?.name}</p></div>
                                 <div className="space-x-3">
@@ -646,7 +646,7 @@ const AdminDashboard = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
-                                {experiences.map(exp => (
+                                {(experiences || []).map(exp => (
                                     <tr key={exp._id} className="hover:bg-white/[0.01]">
                                         <td className="px-8 py-6 text-white font-black">{exp.isAnonymous ? 'Anonymous' : exp.studentId?.name}</td>
                                         <td className="px-8 py-6 text-white font-black">{exp.companyId?.companyProfile?.companyName || exp.companyId?.name}</td>
@@ -661,7 +661,7 @@ const AdminDashboard = () => {
                                         </td>
                                     </tr>
                                 ))}
-                                {experiences.length === 0 && (
+                                {(experiences || []).length === 0 && (
                                     <tr>
                                         <td colSpan="4" className="px-8 py-20 text-center text-slate-600 italic font-medium">
                                             No pending student experiences to moderate.

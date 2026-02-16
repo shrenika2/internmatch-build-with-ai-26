@@ -24,8 +24,8 @@ const initSocket = (server) => {
                 return next(new Error("Authentication error: User not found"));
             }
 
-            if (user.status !== 'approved') {
-                return next(new Error("Authentication error: Account not approved or blocked"));
+            if (user.status === 'blocked' || user.status === 'rejected') {
+                return next(new Error("Authentication error: Account blocked or rejected"));
             }
 
             socket.user = user;
@@ -93,6 +93,29 @@ const initSocket = (server) => {
                 ...data,
                 sender: { _id: socket.user._id, name: socket.user.name, role: socket.user.role },
                 createdAt: new Date()
+            });
+        });
+
+        socket.on('leave_opportunity_chat', (oppId) => {
+            socket.leave(`opportunity_chat:${oppId}`);
+        });
+
+        // Team Collaboration Events
+        socket.on('team:typing', (data) => {
+            // data contains: teamId, isTyping
+            socket.to(`project:${data.teamId}`).emit('team:typing_update', {
+                userId: socket.user._id,
+                userName: socket.user.name,
+                isTyping: data.isTyping
+            });
+        });
+
+        socket.on('team:read_receipt', (data) => {
+            // data contains: teamId, messageId
+            socket.to(`project:${data.teamId}`).emit('team:read_update', {
+                messageId: data.messageId,
+                userId: socket.user._id,
+                at: new Date()
             });
         });
 

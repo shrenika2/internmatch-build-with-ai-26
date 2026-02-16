@@ -8,7 +8,10 @@ const getOpportunityMessages = asyncHandler(async (req, res) => {
     const messages = await ProjectMessage.find({ project: req.params.id })
         .populate('sender', 'name role')
         .sort('createdAt');
-    res.json(messages);
+
+    // SAFE ARRAY PROTECTION: Filter out deleted users/null senders
+    const filtered = (messages || []).filter(m => m && m.sender != null);
+    res.json(filtered);
 });
 
 // @desc    Post a message to an opportunity/project chat

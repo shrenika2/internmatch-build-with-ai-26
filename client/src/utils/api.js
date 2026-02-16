@@ -21,4 +21,10 @@ export const authAPI = {
     getStatus: () => API.get('/auth/status'),
 };
 
+export const notificationAPI = {
+    getNotifications: (page = 1) => API.get(`/notifications?page=${page}`),
+    markAsRead: (id) => API.patch(`/notifications/${id}/read`),
+    markAllRead: () => API.patch('/notifications/read'),
+};
+
 export default API;

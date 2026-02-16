@@ -63,8 +63,8 @@ const NotificationCenter = () => {
                             </div>
 
                             <div className="overflow-y-auto">
-                                {notifications.length > 0 ? (
-                                    notifications.map((n) => (
+                                {(notifications || []).length > 0 ? (
+                                    (notifications || []).map((n) => (
                                         <div
                                             key={n._id}
                                             onClick={() => handleNotifClick(n)}

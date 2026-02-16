@@ -104,7 +104,25 @@ const getStudentPracticeOverview = asyncHandler(async (req, res) => {
         ]
     }).populate('faculty', 'name facultyProfile').sort('-createdAt');
 
-    res.json({ corporate, academic });
+    // 4. Check for interactive assessments (PracticeQuestions)
+    const PracticeQuestion = require('../models/PracticeQuestion');
+    const assessmentStats = await PracticeQuestion.aggregate([
+        { $match: { company: { $in: appliedCompanyIds } } },
+        { $group: { _id: "$company", count: { $sum: 1 } } }
+    ]);
+
+    const assessmentMap = assessmentStats.reduce((acc, stat) => {
+        acc[stat._id.toString()] = stat.count;
+        return acc;
+    }, {});
+
+    const corporateWithStats = corporate.map(m => {
+        const doc = m.toObject();
+        doc.assessmentCount = assessmentMap[m.company._id.toString()] || 0;
+        return doc;
+    });
+
+    res.json({ corporate: corporateWithStats, academic });
 });
 
 // @desc    Get practice materials for a specific company (for student)

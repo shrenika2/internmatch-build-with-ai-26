@@ -100,7 +100,7 @@ const ExperienceSubmission = ({ onClose, onSuccess }) => {
                                     onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
                                 >
                                     <option value="">Select Target Entity</option>
-                                    {companies.map(c => (
+                                    {(companies || []).map(c => (
                                         <option key={c._id} value={c._id}>{c.name}</option>
                                     ))}
                                 </select>
@@ -184,7 +184,7 @@ const ExperienceSubmission = ({ onClose, onSuccess }) => {
                                 />
                             </div>
                         )}
-                    </section> section
+                    </section>
 
                     <section className="space-y-6">
                         <div className="flex items-center justify-between mb-2">
@@ -194,7 +194,7 @@ const ExperienceSubmission = ({ onClose, onSuccess }) => {
                             </button>
                         </div>
                         <div className="space-y-4">
-                            {formData.rounds.map((round, idx) => (
+                            {(formData.rounds || []).map((round, idx) => (
                                 <motion.div key={idx} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex gap-4 p-4 bg-white/5 rounded-2xl items-start relative border border-white/5">
                                     <span className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-500">{idx + 1}</span>
                                     <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -211,7 +211,7 @@ const ExperienceSubmission = ({ onClose, onSuccess }) => {
                                             onChange={(e) => updateRound(idx, 'description', e.target.value)}
                                         />
                                     </div>
-                                    {formData.rounds.length > 1 && (
+                                    {(formData.rounds?.length || 0) > 1 && (
                                         <button type="button" onClick={() => removeRound(idx)} className="text-slate-700 hover:text-red-500 transition-colors p-2"><Trash2 className="w-4 h-4" /></button>
                                     )}
                                 </motion.div>
@@ -237,7 +237,7 @@ const ExperienceSubmission = ({ onClose, onSuccess }) => {
                                 checked={formData.isAnonymous}
                                 onChange={(e) => setFormData({ ...formData, isAnonymous: e.target.checked })}
                             />
-                            <span className="text-xs font-bold text-slate-500 group-hover:text-slate-300 transition-colorsUppercase">Mask Identity (Anonymous Mode)</span>
+                            <span className="text-xs font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase">Mask Identity (Anonymous Mode)</span>
                         </label>
 
                         <button

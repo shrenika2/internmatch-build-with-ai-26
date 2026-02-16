@@ -3,34 +3,28 @@ const Opportunity = require('../models/Opportunity');
 const Application = require('../models/Application');
 const PracticeAttempt = require('../models/PracticeAttempt');
 const User = require('../models/User');
-const Notification = require('../models/Notification');
+const notificationService = require('../services/notificationService');
+const aiService = require('../services/aiService');
+const settingsService = require('../utils/settingsService');
 
-// @desc    Get company stats
+// @desc    Get counts for dashboard
 // @route   GET /api/company/stats
 // @access  Private (Company)
 const getCompanyStats = asyncHandler(async (req, res) => {
     const opportunities = await Opportunity.find({ postedBy: req.user._id });
-    const opportunityIds = opportunities.map(o => o._id);
+    const oppIds = opportunities.map(o => o._id);
 
-    const activePostings = opportunities.filter(o => o.status === 'open').length;
-    const totalApplicants = await Application.countDocuments({ opportunity: { $in: opportunityIds } });
-    const shortlistedCount = await Application.countDocuments({
-        opportunity: { $in: opportunityIds },
-        status: { $in: ['shortlisted', 'accepted'] }
+    const activeOpportunities = opportunities.filter(o => o.status === 'open').length;
+    const totalApplications = await Application.countDocuments({ opportunity: { $in: oppIds } });
+    const pendingApplications = await Application.countDocuments({
+        opportunity: { $in: oppIds },
+        status: 'applied'
     });
 
-    // Recent applications
-    const recentApplications = await Application.find({ opportunity: { $in: opportunityIds } })
-        .populate('student', 'name email')
-        .populate('opportunity', 'title')
-        .sort('-createdAt')
-        .limit(5);
-
     res.json({
-        activePostings,
-        totalApplicants,
-        shortlistedCount,
-        recentApplications
+        activeOpportunities,
+        totalApplications,
+        pendingApplications
     });
 });
 
@@ -38,48 +32,51 @@ const getCompanyStats = asyncHandler(async (req, res) => {
 // @route   GET /api/company/profile
 // @access  Private (Company)
 const getCompanyProfile = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user._id).select('companyProfile name email avatar');
     res.json(user);
 });
 
 // @desc    Update company profile
-// @route   PUT /api/company/profile
+// @route   POST /api/company/profile
 // @access  Private (Company)
 const updateCompanyProfile = asyncHandler(async (req, res) => {
     const user = await User.findById(req.user._id);
-
-    if (user) {
-        user.name = req.body.name || user.name;
-        user.companyProfile = {
-            ...user.companyProfile,
-            ...req.body.companyProfile
-        };
-
-        const updatedUser = await user.save();
-        res.json({
-            _id: updatedUser._id,
-            name: updatedUser.name,
-            email: updatedUser.email,
-            role: updatedUser.role,
-            companyProfile: updatedUser.companyProfile
-        });
-    } else {
-        res.status(404);
-        throw new Error('Company not found');
-    }
+    user.companyProfile = { ...user.companyProfile, ...req.body };
+    await user.save();
+    res.json(user.companyProfile);
 });
 
-// @desc    Get all applicants for company's opportunities
-// @route   GET /api/company/applicants
+// @desc    Get all applicants for company opportunities
+// @route   GET /api/company/applications
 // @access  Private (Company)
 const getCompanyApplicants = asyncHandler(async (req, res) => {
     const opportunities = await Opportunity.find({ postedBy: req.user._id });
-    const opportunityIds = opportunities.map(o => o._id);
+    const oppIds = opportunities.map(o => o._id);
 
-    const applications = await Application.find({ opportunity: { $in: opportunityIds } })
-        .populate('student', 'name email studentProfile')
-        .populate('opportunity', 'title type')
-        .sort('-createdAt');
+    const applications = await Application.find({ opportunity: { $in: oppIds } })
+        .populate('opportunity', 'title type requiredSkills')
+        .populate('student', 'name email studentProfile avatar')
+        .sort('-skillMatchScore -createdAt');
+
+    // Trigger score RECOVERY for those missing it (async background protocol)
+    applications.forEach(app => {
+        const hasNoScore = !app.skillMatchScore || app.skillMatchScore === 0;
+        const hasNoSkills = !app.resumeSkills || app.resumeSkills.length === 0;
+
+        if (hasNoScore && hasNoSkills) {
+            console.log(`[CORE_AUDIT] Recovery initiated for app ${app._id}`);
+            aiService.extractTextFromURL(app.resume)
+                .then(text => aiService.extractSkills(text))
+                .then(data => {
+                    const score = aiService.calculateMatchScore(data.skills, app.opportunity?.requiredSkills || []);
+                    app.resumeSkills = data.skills;
+                    app.skillMatchScore = score;
+                    return app.save();
+                })
+                .then(() => console.log(`[CORE_AUDIT] Recovery SUCCESS for app ${app._id}`))
+                .catch(err => console.error(`[CORE_AUDIT] Recovery FAILED for ${app._id}:`, err.message));
+        }
+    });
 
     res.json(applications);
 });
@@ -107,20 +104,17 @@ const updateApplicationStatus = asyncHandler(async (req, res) => {
     application.status = status;
     await application.save();
 
+    const io = req.app.get('socketio');
+
     // Notify student
-    const notification = await Notification.create({
-        recipient: application.student._id,
-        sender: req.user._id,
+    await notificationService.sendNotification({
+        userId: application.student._id,
+        senderId: req.user._id,
         type: 'application',
         title: `Application Status Updated`,
         message: `Your application for "${application.opportunity.title}" has been ${status}.`,
         link: '/student/dashboard'
-    });
-
-    const io = req.app.get('socketio');
-    if (io) {
-        io.to(application.student._id.toString()).emit('notification:new', notification);
-    }
+    }, io);
 
     res.json({ message: `Status updated to ${status}`, application });
 });
@@ -199,14 +193,27 @@ const getShortlist = asyncHandler(async (req, res) => {
 
             if (!isEligible) return null;
 
-            // 2. Skill Match Score (40%)
-            const requiredSkills = opportunity.requiredSkills || [];
-            const studentSkills = student.studentProfile?.skills || [];
-            const matchedSkills = requiredSkills.filter(skill => studentSkills.includes(skill));
-            const skillMatchScore = requiredSkills.length > 0 ? (matchedSkills.length / requiredSkills.length) * 100 : 100;
+            // 2. AI Resume Skill Match Score (Priority)
+            let resumeMatchScore = app.skillMatchScore;
+
+            if (!resumeMatchScore || resumeMatchScore === 0) {
+                try {
+                    // Phase 3.2: If score missing → compute once and store
+                    const resumeText = await aiService.extractTextFromURL(app.resume);
+                    const aiData = await aiService.extractSkills(resumeText);
+                    resumeMatchScore = aiService.calculateMatchScore(aiData.skills, opportunity.requiredSkills || []);
+
+                    // Cache results
+                    app.resumeSkills = aiData.skills;
+                    app.skillMatchScore = resumeMatchScore;
+                    await app.save();
+                } catch (err) {
+                    console.error(`[AI_MATCH] Failed to compute score for ${app._id}:`, err.message);
+                    resumeMatchScore = 0;
+                }
+            }
 
             // 3. Practice Activity Score (30%)
-            // Count attempts in the last 30 days
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -216,17 +223,16 @@ const getShortlist = asyncHandler(async (req, res) => {
             });
 
             const correctAttempts = attempts.filter(a => a.isCorrect).length;
-            const practiceScore = Math.min((correctAttempts / 10) * 100, 100); // 10 correct attempts for full points
+            const practiceScore = Math.min((correctAttempts / 10) * 100, 100);
 
             // 4. Readiness Score placeholder/logic (30%)
-            // Using accuracy as the readiness component here for simplicity
             const totalAttempts = await PracticeAttempt.countDocuments({ student: student._id });
             const totalCorrect = await PracticeAttempt.countDocuments({ student: student._id, isCorrect: true });
             const readinessScore = totalAttempts > 0 ? (totalCorrect / totalAttempts) * 100 : 0;
 
-            // Final Rank Score
+            // Final Rank Score (Unified)
             const rankScore = Math.round(
-                (skillMatchScore * 0.4) +
+                (resumeMatchScore * 0.4) +
                 (practiceScore * 0.3) +
                 (readinessScore * 0.3)
             );
@@ -241,11 +247,11 @@ const getShortlist = asyncHandler(async (req, res) => {
                 },
                 scores: {
                     rankScore,
-                    skillMatchScore: Math.round(skillMatchScore),
+                    skillMatchScore: Math.round(resumeMatchScore),
                     practiceScore: Math.round(practiceScore),
                     readinessScore: Math.round(readinessScore)
                 },
-                matchedSkills,
+                matchedSkills: app.resumeSkills || [],
                 status: app.status
             };
         })
@@ -275,21 +281,16 @@ const selectCandidate = asyncHandler(async (req, res) => {
     application.status = status;
     await application.save();
 
-    // Create notification for student
-    const notification = await Notification.create({
-        recipient: application.student._id,
-        sender: req.user._id,
+    // Notify student via service
+    const io = req.app.get('socketio');
+    await notificationService.sendNotification({
+        userId: application.student._id,
+        senderId: req.user._id,
         type: 'application',
         title: `Application Update: ${application.opportunity.title}`,
         message: `Your application for "${application.opportunity.title}" has been ${status}.`,
-        link: '/student/dashboard',
-    });
-
-    // Real-time notification
-    const io = req.app.get('socketio');
-    if (io) {
-        io.to(application.student._id.toString()).emit('notification:new', notification);
-    }
+        link: '/student/dashboard'
+    }, io);
 
     res.json({ message: `Candidate status updated to ${status}`, application });
 });

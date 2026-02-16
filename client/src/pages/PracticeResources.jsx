@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import API from '../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,7 +19,7 @@ const PracticeResources = () => {
         const fetchPracticeModules = async () => {
             try {
                 const { data } = await API.get('/student/practice');
-                setPracticeData(data);
+                setPracticeData(data || { corporate: [], academic: [] });
                 setLoading(false);
             } catch (err) {
                 console.error('Failed to fetch practice modules:', err);
@@ -37,23 +38,23 @@ const PracticeResources = () => {
     };
 
     const getSourceInfo = (module) => {
-        if (module.postedByRole === 'company') {
+        if (module?.postedByRole === 'company') {
             return {
-                label: module.company?.companyProfile?.companyName || module.company?.name || 'Recruiter',
+                label: module?.company?.companyProfile?.companyName || module?.company?.name || 'Recruiter',
                 icon: <Briefcase className="w-3 h-3" />,
                 color: 'text-emerald-500'
             };
         }
         return {
-            label: `Prof. ${module.faculty?.name || 'Academic Authority'}`,
+            label: `Prof. ${module?.faculty?.name || 'Academic Authority'}`,
             icon: <GraduationCap className="w-3 h-3" />,
             color: 'text-purple-500'
         };
     };
 
-    const filteredModules = practiceData[activeTab].filter(m =>
-        m.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.type.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredModules = (practiceData?.[activeTab] || []).filter(m =>
+        (m.title || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.type || "").toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     if (loading) return (
@@ -104,7 +105,7 @@ const PracticeResources = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <AnimatePresence mode="wait">
-                    {filteredModules.length > 0 ? (
+                    {(filteredModules || []).length > 0 ? (
                         filteredModules.map((module) => {
                             const source = getSourceInfo(module);
                             return (
@@ -141,14 +142,24 @@ const PracticeResources = () => {
                                                 {source.label}
                                             </span>
                                         </div>
-                                        <a
-                                            href={module.fileUrl || module.externalLink}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="px-4 py-2 bg-white/5 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
-                                        >
-                                            Initialize <ExternalLink className="w-3 h-3" />
-                                        </a>
+                                        <div className="flex flex-col gap-2">
+                                            <a
+                                                href={module.fileUrl || module.externalLink}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="w-full px-4 py-2 bg-white/5 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                                            >
+                                                Initialize <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                            {module?.assessmentCount > 0 && module?.company?._id && (
+                                                <Link
+                                                    to={`/student/arena/${module.company._id}`}
+                                                    className="w-full px-4 py-2 bg-primary-600/10 hover:bg-primary-600 text-primary-500 hover:text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-primary-500/20"
+                                                >
+                                                    Start Arena Simulation <Zap className="w-3 h-3" />
+                                                </Link>
+                                            )}
+                                        </div>
                                     </div>
                                 </motion.div>
                             );

@@ -42,14 +42,14 @@ const OpportunityCard = ({ opportunity }) => {
             </div>
 
             <div className="flex flex-wrap gap-2 mb-6">
-                {opportunity.requiredSkills.slice(0, 3).map((skill) => (
+                {(opportunity.requiredSkills || []).slice(0, 3).map((skill) => (
                     <span key={skill} className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary-500/10 text-primary-400 uppercase">
                         {skill}
                     </span>
                 ))}
-                {opportunity.requiredSkills.length > 3 && (
+                {(opportunity.requiredSkills?.length || 0) > 3 && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-500 uppercase">
-                        +{opportunity.requiredSkills.length - 3} more
+                        +{(opportunity.requiredSkills?.length || 0) - 3} more
                     </span>
                 )}
             </div>

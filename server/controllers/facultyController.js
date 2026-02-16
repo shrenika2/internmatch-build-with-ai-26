@@ -3,9 +3,9 @@ const Opportunity = require('../models/Opportunity');
 const Resource = require('../models/Resource');
 const Team = require('../models/Team');
 const ProjectMessage = require('../models/ProjectMessage');
-const Notification = require('../models/Notification');
+const notificationService = require('../services/notificationService');
 
-// @desc    Get faculty projects
+// @desc    Get faculty posted projects
 // @route   GET /api/faculty/projects
 // @access  Private (Faculty)
 const getFacultyProjects = asyncHandler(async (req, res) => {
@@ -13,12 +13,22 @@ const getFacultyProjects = asyncHandler(async (req, res) => {
     res.json(projects);
 });
 
+// @desc    Get pending team requests for mentor
+// @route   GET /api/faculty/teams/pending
+// @access  Private (Faculty)
+const getPendingTeamRequests = asyncHandler(async (req, res) => {
+    const teams = await Team.find({ mentor: req.user._id, status: 'pending' })
+        .populate('leader', 'name email avatar')
+        .populate('opportunity', 'title');
+    res.json(teams);
+});
+
 // @desc    Handle team request (Accept/Reject)
 // @route   PUT /api/faculty/teams/:teamId
 // @access  Private (Faculty)
 const handleTeamRequest = asyncHandler(async (req, res) => {
     const { status } = req.body; // 'accepted' or 'rejected'
-    const team = await Team.findById(req.params.teamId).populate('leader').populate('project');
+    const team = await Team.findById(req.params.teamId).populate('leader').populate('opportunity');
 
     if (!team) {
         res.status(404);
@@ -33,20 +43,17 @@ const handleTeamRequest = asyncHandler(async (req, res) => {
     team.status = status;
     await team.save();
 
+    const io = req.app.get('socketio');
+
     // Create notification for team leader
-    const notification = await Notification.create({
-        recipient: team.leader._id,
-        sender: req.user._id,
+    await notificationService.sendNotification({
+        userId: team.leader._id,
+        senderId: req.user._id,
         type: 'system',
         title: `Team Request ${status === 'accepted' ? 'Accepted' : 'Rejected'}`,
-        message: `Professor ${req.user.name} has ${status} your team "${team.name}" for project "${team.project.title}"`,
-        link: `/student/dashboard`,
-    });
-
-    const io = req.app.get('socketio');
-    if (io) {
-        io.to(team.leader._id.toString()).emit('notification', notification);
-    }
+        message: `Professor ${req.user.name} has ${status} your team "${team.name}" for project "${team.opportunity.title}"`,
+        link: `/student/dashboard`
+    }, io);
 
     res.json(team);
 });
@@ -82,6 +89,7 @@ const postProjectMessage = asyncHandler(async (req, res) => {
 
 module.exports = {
     getFacultyProjects,
+    getPendingTeamRequests,
     handleTeamRequest,
     getProjectMessages,
     postProjectMessage

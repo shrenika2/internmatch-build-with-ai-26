@@ -57,6 +57,11 @@ const opportunitySchema = mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        branch: {
+            type: String,
+            required: true,
+            default: ""
+        }
     },
     {
         timestamps: true,

@@ -11,7 +11,10 @@ const {
     createTeamTask,
     updateTeamTask,
     getTeamAssets,
-    createTeamAsset
+    createTeamAsset,
+    getTeamActivity,
+    getTeamMessages,
+    sendTeamMessage
 } = require('../controllers/teamController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -30,5 +33,10 @@ router.post('/:id/tasks', createTeamTask);
 router.put('/tasks/:taskId', updateTeamTask);
 router.get('/:id/assets', getTeamAssets);
 router.post('/:id/assets', createTeamAsset);
+
+// Chat & Activity Feed
+router.get('/:id/activity', getTeamActivity);
+router.get('/:id/chat', getTeamMessages);
+router.post('/:id/chat', sendTeamMessage);
 
 module.exports = router;

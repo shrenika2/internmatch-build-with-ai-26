@@ -80,9 +80,9 @@ const ReadinessStats = ({ compact = false }) => {
                     Skill Gap Analysis
                 </h3>
 
-                {stats.skillGaps.length > 0 ? (
+                {(stats.skillGaps || []).length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {stats.skillGaps.map(skill => (
+                        {(stats.skillGaps || []).map(skill => (
                             <div key={skill} className="flex items-center gap-3 p-3 bg-slate-900/50 rounded-xl border border-white/5">
                                 <div className="w-2 h-2 rounded-full bg-red-500" />
                                 <span className="text-slate-300 font-medium">{skill}</span>

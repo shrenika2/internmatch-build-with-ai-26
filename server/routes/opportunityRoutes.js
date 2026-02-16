@@ -8,6 +8,7 @@ const {
     getMyApplications,
 } = require('../controllers/opportunityController');
 const { protect, authorize } = require('../middleware/authMiddleware');
+const resumeUpload = require('../middleware/resumeUpload');
 const { getOpportunityMessages, postOpportunityMessage } = require('../controllers/chatController');
 
 router.get('/my-applications', protect, authorize('student'), getMyApplications);
@@ -24,5 +25,6 @@ router.route('/:id')
     .get(getOpportunityById);
 
 router.post('/:id/apply', protect, authorize('student'), applyForOpportunity);
+
 
 module.exports = router;

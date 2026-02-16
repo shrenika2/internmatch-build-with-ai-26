@@ -2,12 +2,21 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
 const settingsService = require('../utils/settingsService');
+const { logAction } = require('../utils/auditService');
+const { validateRegister, validateLogin } = require('../middleware/validationMiddleware');
 
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
 const registerUser = asyncHandler(async (req, res) => {
-    const { name, email, password, role } = req.body;
+    // 0. Joi Validation
+    const { error } = validateRegister(req.body);
+    if (error) {
+        res.status(400);
+        throw new Error(error.details.map(d => d.message).join(', '));
+    }
+
+    const { name, email, password, role, studentProfile, companyProfile, facultyProfile } = req.body;
     const settings = await settingsService.getSettings();
 
     // 1. Domain Validation
@@ -32,7 +41,11 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     // 2. Role Security
-    const finalRole = role === 'admin' ? 'student' : (role || 'student');
+    if (role === 'admin') {
+        res.status(403);
+        throw new Error('Admin registration is not allowed');
+    }
+    const finalRole = role || 'student';
 
     // 3. Status & Auto-approval Logic
     let status = 'pending';
@@ -49,16 +62,44 @@ const registerUser = asyncHandler(async (req, res) => {
         status = 'pending';
     }
 
-    const user = await User.create({
+    const userData = {
         name,
         email,
         password,
         role: finalRole,
         status,
         isVerified
-    });
+    };
+
+    // Profile sanitation: Remove empty strings and nulls to prevent CastErrors
+    const sanitizeProfile = (profile) => {
+        if (!profile) return undefined;
+        const sanitized = {};
+        Object.keys(profile).forEach(key => {
+            if (profile[key] !== '' && profile[key] !== null && profile[key] !== undefined) {
+                sanitized[key] = profile[key];
+            }
+        });
+        return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+    };
+
+    // Attach profile based on role
+    if (finalRole === 'student') userData.studentProfile = sanitizeProfile(studentProfile);
+    if (finalRole === 'company') userData.companyProfile = sanitizeProfile(companyProfile);
+    if (finalRole === 'faculty') userData.facultyProfile = sanitizeProfile(facultyProfile);
+
+    const user = await User.create(userData);
 
     if (user) {
+        logAction({
+            userId: user._id,
+            action: 'USER_REGISTER',
+            entityType: 'User',
+            entityId: user._id,
+            metadata: { role: user.role, status: user.status },
+            req
+        });
+
         res.status(201).json({
             _id: user._id,
             name: user.name,
@@ -79,32 +120,31 @@ const registerUser = asyncHandler(async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 const loginUser = asyncHandler(async (req, res) => {
+    // 0. Joi Validation
+    const { error } = validateLogin(req.body);
+    if (error) {
+        res.status(400);
+        throw new Error(error.details.map(d => d.message).join(', '));
+    }
+
     const { email, password } = req.body;
     const settings = await settingsService.getSettings();
 
     const user = await User.findOne({ email }).select('+password');
 
     if (user && (await user.matchPassword(password))) {
-        // Enterprise Grade Security: Block if suspended
-        if (user.isSuspended || user.status === 'blocked') {
+        if (user.isSuspended || user.status === 'blocked' || user.status === 'rejected') {
             res.status(403);
-            throw new Error('Access Denied: Your account has been suspended indefinitely.');
+            throw new Error('Access Denied: Your account has been suspended or rejected.');
         }
 
-        // Enrollment rules
-        const isStudent = user.role === 'student';
-        const isAutoApproved = (isStudent && settings.enableStudentAutoApproval) ||
-            (user.role === 'company' && settings.enableCompanyAutoApproval);
-
-        if (!isAutoApproved && user.status === 'pending') {
-            res.status(401);
-            throw new Error('Access Denied: Your account is currently pending administrative approval.');
-        }
-
-        if (user.status === 'rejected') {
-            res.status(403);
-            throw new Error('Access Denied: Your registration has been rejected.');
-        }
+        logAction({
+            userId: user._id,
+            action: 'USER_LOGIN',
+            entityType: 'User',
+            entityId: user._id,
+            req
+        });
 
         res.json({
             _id: user._id,

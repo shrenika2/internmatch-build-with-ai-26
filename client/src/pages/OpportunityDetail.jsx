@@ -35,8 +35,9 @@ const OpportunityDetail = () => {
     const socketRef = useRef(null);
 
     // Application form state
-    const [resume, setResume] = useState('');
     const [coverLetter, setCoverLetter] = useState('');
+    const [studentProfile, setStudentProfile] = useState(null);
+
 
     useEffect(() => {
         const fetchData = async () => {
@@ -47,25 +48,31 @@ const OpportunityDetail = () => {
                     API.get(`/student/practice/opportunity/${id}`)
                 ]);
                 setOpportunity(oppRes.data);
-                setResources(resRes.data);
-                setPracticeModules(practiceRes.data);
+                setResources(resRes.data || []);
+                setPracticeModules(practiceRes.data || []);
 
                 // Fetch unified messages for opportunity/project
                 const msgRes = await API.get(`/opportunities/${id}/messages`);
-                setMessages(msgRes.data);
+                setMessages(msgRes.data || []);
+
+                // 1. Fetch Student Profile for Resume Persistence Check
+                if (user?.role === 'student') {
+                    const { data: profile } = await API.get('/student-profile/me');
+                    setStudentProfile(profile);
+                }
             } catch (err) {
                 console.error(err);
-                setError('Opportunity not found');
+                setError('Opportunity not found or restricted');
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
-    }, [id]);
+    }, [id, user]);
 
     useEffect(() => {
         if (user && opportunity) {
-            const socket = io('http://localhost:5000', {
+            const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
                 auth: { token: user.token }
             });
             socketRef.current = socket;
@@ -75,12 +82,12 @@ const OpportunityDetail = () => {
 
             socket.on('new_resource', (resource) => {
                 if (resource.relatedOpportunity === id) {
-                    setResources(prev => [resource, ...prev]);
+                    setResources(prev => [resource, ...(prev || [])]);
                 }
             });
 
             socket.on('new_opportunity_message', (msg) => {
-                setMessages(prev => [...prev, msg]);
+                setMessages(prev => [...(prev || []), msg]);
             });
 
             return () => {
@@ -93,14 +100,26 @@ const OpportunityDetail = () => {
     const handleApply = async (e) => {
         e.preventDefault();
         if (!user) { navigate('/login'); return; }
+
+        // 2. Validate Persistent Resume
+        if (!studentProfile?.resumeFileUrl) {
+            setError('Strategic Gap: No resume signal detected in your profile. Please upload your resume in the Profile section before applying.');
+            return;
+        }
+
         setApplying(true); setError('');
+
         try {
-            await API.post(`/opportunities/${id}/apply`, { resume, coverLetter });
+            // 3. Simple JSON Payload (No Multipart required anymore)
+            await API.post(`/opportunities/${id}/apply`, {
+                coverLetter
+            });
             setSuccess(true);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to submit application');
+            setError(err.response?.data?.message || 'Archival Failure: Failed to submit application');
         } finally { setApplying(false); }
     };
+
 
     const handleResourceUpload = async (e) => {
         e.preventDefault();
@@ -111,7 +130,7 @@ const OpportunityDetail = () => {
                 type: resType,
                 relatedOpportunity: id
             });
-            setResources(prev => [data, ...prev]);
+            setResources(prev => [data, ...(prev || [])]);
             setShowUpload(false);
             setResTitle('');
             setResUrl('');
@@ -150,9 +169,9 @@ const OpportunityDetail = () => {
     };
 
     if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-10 h-10 text-primary-500 animate-spin" /></div>;
-    if (!opportunity) return <div className="min-h-screen pt-32 text-center"><p className="text-2xl text-slate-400">Opportunity not found.</p></div>;
+    if (!opportunity) return <div className="min-h-screen pt-32 text-center"><p className="text-2xl text-slate-400 font-black uppercase tracking-widest">Opportunity Not Deployed</p></div>;
 
-    const isOwner = user && opportunity.postedBy._id === user._id;
+    const isOwner = user && opportunity?.postedBy?._id === user?._id;
 
     return (
         <div className="min-h-screen pt-24 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
@@ -169,9 +188,12 @@ const OpportunityDetail = () => {
                         </div>
                         <h1 className="text-4xl font-bold text-white mb-4">{opportunity.title}</h1>
                         <div className="flex flex-wrap gap-6 text-slate-400 mb-8 border-b border-white/5 pb-8">
-                            <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-primary-500" /><span className="font-medium">{opportunity.postedBy.name}</span></div>
-                            <div className="flex items-center gap-2"><MapPin className="w-5 h-5 text-primary-500" /><span>{opportunity.location}</span></div>
-                            <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-primary-500" /><span>{opportunity.duration || 'Flexible'}</span></div>
+                            <div className="flex items-center gap-2">
+                                <Building2 className="w-5 h-5 text-primary-500" />
+                                <span className="font-medium">{opportunity?.postedBy?.name || 'Unknown Entity'}</span>
+                            </div>
+                            <div className="flex items-center gap-2"><MapPin className="w-5 h-5 text-primary-500" /><span>{opportunity?.location || 'Remote'}</span></div>
+                            <div className="flex items-center gap-2"><Clock className="w-5 h-5 text-primary-500" /><span>{opportunity?.duration || 'Flexible'}</span></div>
                         </div>
                         <div className="prose prose-invert max-w-none">
                             <h3 className="text-xl font-semibold text-white mb-4">Description</h3>
@@ -189,18 +211,28 @@ const OpportunityDetail = () => {
                             <span className="text-[10px] text-green-400 flex items-center gap-1 font-bold animate-pulse"><div className="w-1.5 h-1.5 bg-green-500 rounded-full" /> Live Sync Active</span>
                         </div>
                         <div className="flex-grow overflow-y-auto p-4 space-y-4">
-                            {messages.map((m, idx) => (
-                                <div key={idx} className={`flex flex-col ${m.sender._id === user?._id ? 'items-end' : 'items-start'}`}>
-                                    <div className={`max-w-[80%] p-3 rounded-2xl text-xs font-medium ${m.sender.role === 'company' ? 'bg-green-600 text-white' :
-                                        m.sender.role === 'faculty' ? 'bg-purple-600 text-white' :
-                                            m.sender._id === user?._id ? 'bg-primary-600 text-white' : 'bg-slate-800 text-slate-200'
-                                        }`}>
-                                        {m.isDoubt && <span className="block text-[9px] font-black uppercase text-yellow-400 mb-1 opacity-70">Query</span>}
-                                        {m.text}
+                            {(messages || [])
+                                .filter(m => m && m.sender)
+                                .map((m, idx) => (
+                                    <div key={idx} className={`flex flex-col ${m.sender?._id === user?._id ? 'items-end' : 'items-start'}`}>
+                                        <div className={`max-w-[80%] p-3 rounded-2xl text-xs font-medium ${m.sender?.role === 'company' ? 'bg-green-600 text-white' :
+                                            m.sender?.role === 'faculty' ? 'bg-purple-600 text-white' :
+                                                m.sender?._id === user?._id ? 'bg-primary-600 text-white' : 'bg-slate-800 text-slate-200'
+                                            }`}>
+                                            {m.isDoubt && <span className="block text-[9px] font-black uppercase text-yellow-400 mb-1 opacity-70">Query</span>}
+                                            {m.text}
+                                        </div>
+                                        <span className="text-[9px] text-slate-600 mt-1 uppercase font-bold">
+                                            {m.sender?.name || 'Deleted User'} • {m.sender?.role || 'User'}
+                                        </span>
                                     </div>
-                                    <span className="text-[9px] text-slate-600 mt-1 uppercase font-bold">{m.sender.name} • {m.sender.role}</span>
+                                ))}
+                            {(!messages || messages.length === 0) && (
+                                <div className="h-full flex flex-col items-center justify-center opacity-20 italic">
+                                    <MessageSquare className="w-12 h-12 mb-2" />
+                                    <p className="text-[10px] uppercase font-black tracking-widest text-center px-6 leading-relaxed">Engagement hub initialization complete. No communications detected via the encrypted tunnel.</p>
                                 </div>
-                            ))}
+                            )}
                         </div>
                         <form onSubmit={sendMessage} className="p-4 bg-slate-900 border-t border-white/5 flex gap-2">
                             <input value={newMessage} onChange={e => setNewMessage(e.target.value)} type="text" placeholder="Type a message or doubt..." className="flex-grow bg-slate-800 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary-500" />
@@ -243,26 +275,40 @@ const OpportunityDetail = () => {
                         </AnimatePresence>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {practiceModules.length > 0 ? practiceModules.map((m) => (
-                                <a key={m._id} href={m.fileUrl || m.externalLink} target="_blank" rel="noreferrer" className="p-4 bg-slate-900/50 border border-white/5 rounded-xl flex items-center justify-between group hover:border-emerald-500/30 transition-all">
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg">
-                                            {m.contentType === 'pdf' ? <FileText className="w-5 h-5" /> : m.contentType === 'video' ? <Video className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
+                            {(practiceModules || [])
+                                .filter(m => m != null)
+                                .map((m) => (
+                                    <a key={m._id} href={m.fileUrl || m.externalLink} target="_blank" rel="noreferrer" className="p-4 bg-slate-900/50 border border-white/5 rounded-xl flex items-center justify-between group hover:border-emerald-500/30 transition-all">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg">
+                                                {m.contentType === 'pdf' ? <FileText className="w-5 h-5" /> : m.contentType === 'video' ? <Activity className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-white group-hover:text-emerald-400">{m.title}</p>
+                                                <p className="text-[10px] uppercase text-slate-500 font-black">{m.type} • {m.contentType}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-white group-hover:text-emerald-400">{m.title}</p>
-                                            <p className="text-[10px] uppercase text-slate-500 font-black">{m.type} • {m.contentType}</p>
+                                        <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-white" />
+                                    </a>
+                                ))}
+
+                            {(resources || [])
+                                .filter(res => res != null)
+                                .map((res) => (
+                                    <a key={res._id} href={res.url} target="_blank" rel="noreferrer" className="p-4 bg-slate-900/50 border border-white/5 rounded-xl flex items-center justify-between group hover:border-purple-500/30 transition-all">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg"><FileText className="w-5 h-5" /></div>
+                                            <div><p className="text-sm font-bold text-white group-hover:text-purple-400">{res.title}</p><p className="text-[10px] uppercase text-slate-500 font-black">{res.type}</p></div>
                                         </div>
-                                    </div>
-                                    <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-white" />
-                                </a>
-                            )) : resources.length > 0 ? resources.map((res) => (
-                                <a key={res._id} href={res.url} target="_blank" rel="noreferrer" className="p-4 bg-slate-900/50 border border-white/5 rounded-xl flex items-center justify-between group hover:border-purple-500/30 transition-all">
-                                    <div className="flex items-center gap-3"><div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg"><FileText className="w-5 h-5" /></div><div><p className="text-sm font-bold text-white group-hover:text-purple-400">{res.title}</p><p className="text-[10px] uppercase text-slate-500 font-black">{res.type}</p></div></div>
-                                    <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-white" />
-                                </a>
-                            )) : (
-                                <p className="text-slate-600 text-xs italic">No materials uploaded yet.</p>
+                                        <ExternalLink className="w-4 h-4 text-slate-600 group-hover:text-white" />
+                                    </a>
+                                ))}
+
+                            {(!practiceModules?.length && !resources?.length) && (
+                                <div className="col-span-full py-8 text-center opacity-30 italic">
+                                    <HelpCircle className="w-8 h-8 mx-auto mb-2" />
+                                    <p className="text-[10px] font-black uppercase tracking-widest">No strategic materials found in the archive.</p>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -297,9 +343,60 @@ const OpportunityDetail = () => {
                             ) : (
                                 <form onSubmit={handleApply} className="space-y-6">
                                     {error && <div className="p-3 bg-red-500/10 text-red-500 text-[10px] rounded-lg font-bold uppercase">{error}</div>}
-                                    <input type="url" required placeholder="Resume Link (URL)" className="w-full bg-slate-900 border border-white/10 rounded-xl py-3 px-4 text-white text-sm" value={resume} onChange={(e) => setResume(e.target.value)} />
-                                    <textarea rows="4" placeholder="Briefly state your suitability..." className="w-full bg-slate-900 border border-white/10 rounded-xl py-3 px-4 text-white text-sm resize-none" value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} />
-                                    <button type="submit" disabled={applying} className="w-full py-4 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-primary-600/20 flex items-center justify-center gap-2">{applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-3.5 h-3.5" /> Submit Application</>}</button>
+
+                                    <div className="space-y-4">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Resume Verification</label>
+                                        {studentProfile?.resumeFileUrl ? (
+                                            <div className="p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-emerald-500/10 rounded-lg">
+                                                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-white uppercase">Vaulted Resume Detected</p>
+                                                        <p className="text-[9px] text-slate-500 uppercase font-bold">Using profile stored asset</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => navigate('/student/profile')}
+                                                    className="text-[9px] font-black text-primary-500 uppercase hover:text-primary-400 transition-colors"
+                                                >
+                                                    Update Asset
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-2xl">
+                                                <p className="text-[10px] font-black text-red-500 uppercase mb-2">Resume Signal Missing</p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => navigate('/student/profile')}
+                                                    className="w-full py-2 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest"
+                                                >
+                                                    Upload Resume to Profile
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Cover Letter / Suitability</label>
+                                        <textarea
+                                            rows="4"
+                                            placeholder="What makes you the ideal candidate for this mission?"
+                                            className="w-full bg-slate-900 border border-white/10 rounded-xl py-3 px-4 text-white text-sm resize-none focus:border-primary-500/50 outline-none transition-all"
+                                            value={coverLetter}
+                                            onChange={(e) => setCoverLetter(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={applying || !studentProfile?.resumeFileUrl}
+                                        className={`w-full py-4 font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${applying || !studentProfile?.resumeFileUrl ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-primary-600 hover:bg-primary-700 text-white shadow-primary-600/20'}`}
+                                    >
+                                        {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-3.5 h-3.5" /> Commit Application</>}
+                                    </button>
                                 </form>
                             )
                         )}
@@ -307,10 +404,10 @@ const OpportunityDetail = () => {
                         <div className="mt-8 pt-8 border-t border-white/5">
                             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Origin Hub</h4>
                             <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center font-bold ${opportunity.type === 'project' ? 'bg-purple-500/10 border-purple-500/20 text-purple-500' : 'bg-green-500/10 border-green-500/20 text-green-500'}`}>
-                                    {opportunity.postedBy.name.charAt(0)}
+                                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center font-bold ${opportunity?.type === 'project' ? 'bg-purple-500/10 border-purple-500/20 text-purple-500' : 'bg-green-500/10 border-green-500/20 text-green-500'}`}>
+                                    {opportunity?.postedBy?.name?.charAt(0) || '?'}
                                 </div>
-                                <div><p className="text-white font-bold text-sm truncate w-32">{opportunity.postedBy.name}</p><p className="text-slate-500 text-[11px] uppercase font-black tracking-tighter truncate w-32">{opportunity.postedBy.role}</p></div>
+                                <div><p className="text-white font-bold text-sm truncate w-32">{opportunity?.postedBy?.name || 'Unknown Entity'}</p><p className="text-slate-500 text-[11px] uppercase font-black tracking-tighter truncate w-32">{opportunity?.postedBy?.role || 'User'}</p></div>
                             </div>
                         </div>
                     </div>

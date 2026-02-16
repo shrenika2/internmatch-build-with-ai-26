@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const notificationSchema = mongoose.Schema(
     {
-        recipient: {
+        userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
             required: true,
@@ -10,31 +10,33 @@ const notificationSchema = mongoose.Schema(
         sender: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
-            required: true,
         },
         type: {
             type: String,
-            enum: ['application', 'resource_added', 'system', 'opportunity_update', 'broadcast', 'profile_update'],
             required: true,
         },
         title: {
             type: String,
-            required: true,
         },
         message: {
             type: String,
             required: true,
+        },
+        priority: {
+            type: String,
+            enum: ['low', 'medium', 'high'],
+            default: 'low',
+        },
+        read: {
+            type: Boolean,
+            default: false,
         },
         metadata: {
             type: mongoose.Schema.Types.Mixed,
             default: {},
         },
         link: {
-            type: String, // e.g. /company/opportunities/123/applications
-        },
-        isRead: {
-            type: Boolean,
-            default: false,
+            type: String,
         },
     },
     {

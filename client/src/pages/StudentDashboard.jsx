@@ -53,10 +53,13 @@ const StudentDashboard = () => {
                 </div>
 
                 <div className="mt-auto flex flex-col gap-6">
-                    <button className="p-4 text-slate-600 hover:text-white transition-colors relative">
+                    <Link
+                        to="/student/notifications"
+                        className={`p-4 transition-colors relative rounded-2xl ${activeSection === 'notifications' ? 'bg-primary-600 text-white' : 'text-slate-600 hover:text-white hover:bg-white/5'}`}
+                    >
                         <Bell className="w-6 h-6" />
                         <span className="absolute top-4 right-4 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-950" />
-                    </button>
+                    </Link>
                     <div className="w-10 h-10 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center font-black text-xs text-slate-400">
                         {user?.name?.charAt(0)}
                     </div>
