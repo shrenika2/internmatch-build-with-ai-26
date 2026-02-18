@@ -6,6 +6,7 @@ import {
     BookOpen, Bell, Search, Activity, Zap, UserCircle
 } from 'lucide-react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
+import ChatbotFAB from '../features/chatbot/ChatbotFAB';
 
 const StudentDashboard = () => {
     const { user } = useAuth();
@@ -130,6 +131,9 @@ const StudentDashboard = () => {
                     </div>
                 </div>
             </main>
+
+            {/* Chatbot Integration */}
+            <ChatbotFAB />
 
             {/* Background Decorative Elements */}
             <div className="fixed top-0 right-0 -z-10 w-[800px] h-[800px] bg-primary-600/5 blur-[150px] rounded-full translate-x-1/2 -translate-y-1/2 pointer-events-none" />

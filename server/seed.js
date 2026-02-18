@@ -25,7 +25,7 @@ const bootstrapAdmin = async () => {
 
         console.log('Admin account created successfully.');
         console.log('Email: admin@careergrid.com');
-        console.log('Password: admin@12345');
+        console.log('Password: Admin@12345');
 
         process.exit();
     } catch (err) {
