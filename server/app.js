@@ -101,6 +101,7 @@ app.use('/api/experience', require('./routes/experienceRoutes'));
 app.use('/api/evaluations', require('./routes/evaluationRoutes'));
 app.use('/api/upload', require('./routes/uploadRoutes'));
 app.use('/api/ai', require('./routes/aiRoutes'));
+app.use('/api/interview', require('./routes/interviewRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {

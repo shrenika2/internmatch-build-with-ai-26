@@ -52,7 +52,6 @@ const userSchema = mongoose.Schema(
             college: String,
             branch: {
                 type: String,
-                required: true,
                 default: ""
             },
             year: Number,

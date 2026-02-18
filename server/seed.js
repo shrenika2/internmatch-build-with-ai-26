@@ -18,7 +18,7 @@ const bootstrapAdmin = async () => {
         await User.create({
             name: 'System Administrator',
             email: 'admin@careergrid.com',
-            password: 'admin@12345',
+            password: ' ',
             role: 'admin',
             status: 'approved'
         });

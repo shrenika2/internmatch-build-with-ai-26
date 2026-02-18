@@ -4,7 +4,7 @@ import API from '../utils/api';
 import { motion } from 'framer-motion';
 import {
     Briefcase, Calendar, MapPin, Target,
-    FileText, Zap, ChevronRight, Loader2, ArrowLeft
+    FileText, Zap, ChevronRight, Loader2, ArrowLeft, Sparkles
 } from 'lucide-react';
 import BranchSelect from '../components/BranchSelect';
 
@@ -129,8 +129,25 @@ const PostOpportunity = () => {
                         </h3>
 
                         <div className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Resource Skills (Comma Separated)</label>
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Resource Skills (Comma Separated)</label>
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            if (!formData.description) return alert('Please enter JD first');
+                                            setLoading(true);
+                                            try {
+                                                const { data } = await API.post('/ai/extract-jd-skills', { jdText: formData.description });
+                                                setFormData({ ...formData, requiredSkills: data.skills.join(', ') });
+                                            } catch (err) { alert('Extraction failed'); }
+                                            finally { setLoading(false); }
+                                        }}
+                                        className="text-[10px] font-black text-emerald-500 uppercase flex items-center gap-1 hover:text-emerald-400"
+                                    >
+                                        <Sparkles className="w-3 h-3" /> AI Extract from JD
+                                    </button>
+                                </div>
                                 <div className="relative">
                                     <Zap className="absolute left-4 top-4 w-4 h-4 text-slate-500" />
                                     <textarea

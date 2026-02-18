@@ -35,6 +35,7 @@ import ProfilePage from './features/profile/ProfilePage';
 import NotificationHistory from './pages/NotificationHistory';
 import PracticeArena from './pages/PracticeArena';
 import StudentProfile from './pages/StudentProfile';
+import InterviewPipeline from './pages/InterviewPipeline';
 
 import Navbar from './components/Navbar';
 
@@ -137,6 +138,7 @@ function AppRoutes() {
           <Route path="notifications" element={<NotificationHistory />} />
           <Route path="practice" element={<PracticeResources />} />
           <Route path="arena/:companyId" element={<PracticeArena />} />
+          <Route path="interview-pipeline" element={<InterviewPipeline />} />
         </Route>
       </Route>
 

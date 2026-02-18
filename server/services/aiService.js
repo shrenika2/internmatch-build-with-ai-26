@@ -233,6 +233,70 @@ const aiService = {
         logger.info(`[AI_SERVICE] Matched ${matched.length}/${targetSkills.length} skills. Score: ${score}%`);
 
         return Math.min(score, 100);
+    },
+
+    /**
+     * Extract key technical requirements/skills from Job Description
+     */
+    extractJDSkills: async (jdText) => {
+        if (!jdText || jdText.trim().length < 50) {
+            return { skills: [] };
+        }
+
+        try {
+            const prompt = `
+                Analyze the following Job Description and extract a list of required technical skills, tools, and frameworks.
+                Exclude soft skills like "leadership" or "communication".
+                RETURN ONLY JSON: {"skills": ["Skill1", "Skill2"]}
+                
+                JD:
+                ${jdText.substring(0, 4000)}
+            `;
+
+            const completion = await openai.chat.completions.create({
+                model: "gpt-3.5-turbo-0125",
+                messages: [
+                    { role: "system", content: "You are a professional recruiting assistant that extracts technical requirements from job descriptions." },
+                    { role: "user", content: prompt }
+                ],
+                temperature: 0,
+                response_format: { type: "json_object" }
+            });
+
+            const parsed = JSON.parse(completion.choices[0].message.content);
+            return { skills: parsed.skills || [] };
+        } catch (error) {
+            logger.error(`[AI_SERVICE] JD Parsing Error: ${error.message}`);
+            return { skills: [] };
+        }
+    },
+
+    /**
+     * Build system prompt for AI Interviewer
+     */
+    generateInterviewPrompt: (candidateSkills, jobRequirements, roleDescription) => {
+        const missingSkills = jobRequirements.filter(req =>
+            !candidateSkills.some(res =>
+                res.toLowerCase().includes(req.toLowerCase()) ||
+                req.toLowerCase().includes(res.toLowerCase())
+            )
+        );
+
+        return `
+            You are an expert technical interviewer for the role: ${roleDescription}.
+            Candidate Skills: ${candidateSkills.join(', ')}
+            Job Requirements: ${jobRequirements.join(', ')}
+            Missing Skills (Focus areas): ${missingSkills.join(', ')}
+
+            Instructions:
+            1. Conduct a realistic technical interview.
+            2. Start with a warm greeting and ask the candidate to introduce themselves in the context of this role.
+            3. Ask deep technical questions about their listed skills.
+            4. Gently probe into "Missing Skills" to see if they have any exposure or can learn quickly.
+            5. Keep your responses concise as this is a voice interview.
+            6. If they struggle, provide a hint or move to the next topic.
+            7. Maintain professional tone.
+        `.trim();
     }
 };
 

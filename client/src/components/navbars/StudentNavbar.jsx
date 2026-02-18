@@ -39,6 +39,9 @@ const StudentNavbar = () => {
                             <Link to="/student/practice" className="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 Practice Resources
                             </Link>
+                            <Link to="/student/interview-pipeline" className="text-primary-400 hover:text-primary-300 px-3 py-2 rounded-md text-sm font-black uppercase tracking-tighter transition-all">
+                                AI Interview
+                            </Link>
                             <Link to="/student/guidance" className="text-slate-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
                                 Guidance Hub
                             </Link>
