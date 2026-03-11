@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const Sentry = require("@sentry/node");
 require("@sentry/profiling-node");
 const cors = require('cors');
@@ -47,15 +48,19 @@ const { metricsMiddleware } = require('./middleware/metricsMiddleware');
 app.use(metricsMiddleware);
 
 // CORS Configuration
+// In production, set FRONTEND_URL in Render's environment variables to your
+// Render service URL (e.g. https://your-app.onrender.com). That value is
+// automatically included below via env.FRONTEND_URL.
 const allowedOrigins = [
-    env.FRONTEND_URL,
+    env.FRONTEND_URL,          // Render production URL (set in Render env vars)
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-];
+].filter(Boolean); // Remove undefined/null entries
 
 app.use(
     cors({
         origin: function (origin, callback) {
+            // Allow direct server-to-server calls (no origin) and whitelisted origins
             if (!origin || allowedOrigins.includes(origin)) {
                 callback(null, true);
             } else {
@@ -131,10 +136,25 @@ app.use('/api/chatbot', require('./routes/chatbot.routes'));
 app.use('/api/workspace', require('./modules/workspace').router);
 app.use('/api/workspace/community', require('./modules/workspace/routes/communityRoutes'));
 
-// Basic Route
-app.get('/', (req, res) => {
-    res.json({ message: 'Welcome to the Internship & Project Portal API' });
-});
+// -----------------------------------------------------------------------
+// Production: Serve the React frontend from client/dist.
+// In development, Express serves a simple JSON health-check instead.
+// -----------------------------------------------------------------------
+if (process.env.NODE_ENV === 'production') {
+    // Serve static assets (JS, CSS, images, etc.)
+    app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
+
+    // For any route that is NOT an API route, send back index.html so that
+    // React Router can handle client-side navigation.
+    app.get('*', (req, res) => {
+        res.sendFile(path.join(__dirname, '..', 'client', 'dist', 'index.html'));
+    });
+} else {
+    // Development health-check route
+    app.get('/', (req, res) => {
+        res.json({ message: 'Welcome to the Internship & Project Portal API' });
+    });
+}
 
 // Sentry Error Handler (Must be before any other error middleware)
 if (env.SENTRY_DSN && env.NODE_ENV !== 'test') {
