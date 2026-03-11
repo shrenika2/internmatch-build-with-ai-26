@@ -7,8 +7,21 @@ const initSocket = (server) => {
         cors: {
             origin: "*",
             methods: ["GET", "POST"]
-        }
+        },
+        pingTimeout: 60000, // Wait 60s for pong before closing
+        pingInterval: 25000, // Ping every 25s
+        connectTimeout: 45000,
+        allowEIO3: true // Backward compatibility if needed
     });
+
+    // Handle Socket.io instance errors
+    io.on('error', (err) => {
+        console.error('[SOCKET_IO] Global Error:', err.message);
+        const Sentry = require("@sentry/node");
+        if (process.env.SENTRY_DSN) Sentry.captureException(err);
+    });
+
+    const { registerWorkspaceSocket } = require('./modules/workspace');
 
     // JWT Authentication Middleware for Sockets
     io.use(async (socket, next) => {
@@ -37,6 +50,9 @@ const initSocket = (server) => {
 
     io.on('connection', (socket) => {
         console.log(`User connected: ${socket.user.name} (${socket.id})`);
+
+        // Register Workspace Handlers for this specific socket
+        registerWorkspaceSocket(io, socket);
 
         // Join personal room for private notifications
         socket.join(socket.user._id.toString());
@@ -68,20 +84,34 @@ const initSocket = (server) => {
             socket.join(`company:${socket.user._id}`);
         }
 
-        socket.on('join_project', (projectId) => {
-            socket.join(`project:${projectId}`);
+        socket.on('join_project', async (projectId) => {
+            const { verifyProjectAccess } = require('./middleware/projectAuth');
+            const auth = await verifyProjectAccess(projectId, socket.user._id, socket.user.role);
+
+            if (auth.authorized) {
+                socket.join(`project:${projectId}`);
+            } else {
+                socket.emit('error', { message: auth.message });
+            }
         });
 
         socket.on('leave_project', (projectId) => {
             socket.leave(`project:${projectId}`);
         });
 
-        socket.on('send_project_message', (data) => {
-            io.to(`project:${data.projectId}`).emit('new_project_message', {
-                ...data,
-                sender: { _id: socket.user._id, name: socket.user.name, role: socket.user.role },
-                createdAt: new Date()
-            });
+        socket.on('send_project_message', async (data) => {
+            const { verifyProjectAccess } = require('./middleware/projectAuth');
+            const auth = await verifyProjectAccess(data.projectId, socket.user._id, socket.user.role);
+
+            if (auth.authorized) {
+                io.to(`project:${data.projectId}`).emit('new_project_message', {
+                    ...data,
+                    sender: { _id: socket.user._id, name: socket.user.name, role: socket.user.role },
+                    createdAt: new Date()
+                });
+            } else {
+                socket.emit('error', { message: auth.message });
+            }
         });
 
         socket.on('join_opportunity_chat', (oppId) => {
@@ -100,27 +130,41 @@ const initSocket = (server) => {
             socket.leave(`opportunity_chat:${oppId}`);
         });
 
-        // Team Collaboration Events
-        socket.on('team:typing', (data) => {
-            // data contains: teamId, isTyping
-            socket.to(`project:${data.teamId}`).emit('team:typing_update', {
-                userId: socket.user._id,
-                userName: socket.user.name,
-                isTyping: data.isTyping
-            });
+        // AI Interview Handlers
+        const interviewManager = require('./services/interviewManager');
+        const Opportunity = require('./models/Opportunity');
+        const aiService = require('./services/aiService');
+
+        socket.on('interview:start', async (data) => {
+            try {
+                const opportunity = await Opportunity.findById(data.opportunityId);
+                if (!opportunity) return socket.emit('interview:error', { message: 'Opportunity not found' });
+
+                const candidateSkills = socket.user.studentProfile.parsedSkills || [];
+                const systemPrompt = aiService.generateInterviewPrompt(
+                    candidateSkills,
+                    opportunity.requiredSkills || [],
+                    opportunity.title
+                );
+
+                await interviewManager.startSession(socket.user._id.toString(), socket, opportunity, systemPrompt);
+            } catch (err) {
+                socket.emit('interview:error', { message: err.message });
+            }
         });
 
-        socket.on('team:read_receipt', (data) => {
-            // data contains: teamId, messageId
-            socket.to(`project:${data.teamId}`).emit('team:read_update', {
-                messageId: data.messageId,
-                userId: socket.user._id,
-                at: new Date()
-            });
+        socket.on('interview:audio', (data) => {
+            // data.audio is base64 PCM16
+            interviewManager.handleClientAudio(socket.user._id.toString(), data.audio);
+        });
+
+        socket.on('interview:end', () => {
+            interviewManager.cleanup(socket.user._id.toString(), true);
         });
 
         socket.on('disconnect', () => {
             console.log(`User disconnected: ${socket.id}`);
+            interviewManager.cleanup(socket.user._id.toString());
         });
     });
 

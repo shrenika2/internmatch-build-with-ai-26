@@ -62,7 +62,16 @@ const handleTeamRequest = asyncHandler(async (req, res) => {
 // @route   GET /api/faculty/projects/:projectId/messages
 // @access  Private
 const getProjectMessages = asyncHandler(async (req, res) => {
-    const messages = await ProjectMessage.find({ project: req.params.projectId })
+    const { projectId } = req.params;
+
+    // Security Guard: Verify project access
+    const { verifyProjectAccess } = require('../middleware/projectAuth');
+    const auth = await verifyProjectAccess(projectId, req.user._id, req.user.role);
+    if (!auth.authorized) {
+        return res.status(auth.status).json({ success: false, message: auth.message });
+    }
+
+    const messages = await ProjectMessage.find({ project: projectId })
         .populate('sender', 'name role')
         .sort('createdAt');
     res.json(messages);
@@ -72,14 +81,25 @@ const getProjectMessages = asyncHandler(async (req, res) => {
 // @route   POST /api/faculty/projects/:projectId/messages
 // @access  Private
 const postProjectMessage = asyncHandler(async (req, res) => {
+    const { projectId } = req.params;
     const { text, isDoubt, isFacultyReply } = req.body;
 
+    // Security Guard: Verify project access before permitting a new message write
+    const { verifyProjectAccess } = require('../middleware/projectAuth');
+    const auth = await verifyProjectAccess(projectId, req.user._id, req.user.role);
+    if (!auth.authorized) {
+        return res.status(auth.status).json({ success: false, message: auth.message });
+    }
+
+    // Role Enforcement: Only faculty can set isFacultyReply
+    const actualIsFacultyReply = req.user.role === 'faculty' ? isFacultyReply : false;
+
     const message = await ProjectMessage.create({
-        project: req.params.projectId,
+        project: projectId,
         sender: req.user._id,
         text,
         isDoubt,
-        isFacultyReply
+        isFacultyReply: actualIsFacultyReply
     });
 
     const populated = await ProjectMessage.findById(message._id).populate('sender', 'name role');

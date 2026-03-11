@@ -41,6 +41,13 @@ const applicationSchema = mongoose.Schema(
             type: Number,
             default: 0,
         },
+        matchScore: {
+            type: Number,
+            default: 0,
+        },
+        matchBreakdown: {
+            type: Object,
+        },
         matchNotes: [String],
     },
     {
@@ -48,7 +55,10 @@ const applicationSchema = mongoose.Schema(
     }
 );
 
-// Prevent multiple applications for the same opportunity
+// Optimization Indexes
 applicationSchema.index({ opportunity: 1, student: 1 }, { unique: true });
+applicationSchema.index({ opportunity: 1, status: 1 });
+applicationSchema.index({ opportunity: 1, skillMatchScore: -1 });
+applicationSchema.index({ student: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Application', applicationSchema);

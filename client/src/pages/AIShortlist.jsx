@@ -27,7 +27,14 @@ const AIShortlist = () => {
                 API.get(`/company/opportunities/${id}/shortlist`)
             ]);
             setOpportunity(oppRes.data || null);
-            setCandidates(shortlistRes.data || []);
+
+            // Sort frontend defensively ensures score is respected
+            const sortedCandidates = (shortlistRes.data || []).sort((a, b) => {
+                const scoreA = a.scores?.rankScore || 0;
+                const scoreB = b.scores?.rankScore || 0;
+                return scoreB - scoreA;
+            });
+            setCandidates(sortedCandidates);
         } catch (err) {
             console.error(err);
         } finally {
@@ -72,85 +79,119 @@ const AIShortlist = () => {
             </div>
 
             <div className="grid grid-cols-1 gap-6">
-                {(candidates || []).map((candidate, index) => (
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        key={candidate.applicationId}
-                        className={`glass-card p-6 border-l-4 ${candidate.status === 'shortlisted' ? 'border-l-green-500' :
-                            candidate.status === 'rejected' ? 'border-l-red-500' : 'border-l-primary-500/50'
-                            }`}
-                    >
-                        <div className="flex flex-col lg:row lg:items-center justify-between gap-8">
-                            {/* User Info */}
-                            <div className="flex items-center gap-4 min-w-[300px]">
-                                <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl font-black text-primary-500 border border-white/5">
-                                    {candidate.student?.name?.charAt(0) || '?'}
-                                </div>
-                                <div>
-                                    <h3 className="text-xl font-bold text-white">{candidate.student?.name || 'Student Candidate'}</h3>
-                                    <div className="flex items-center gap-2 text-slate-500 text-sm mt-1">
-                                        <Mail className="w-3 h-3" />
-                                        {candidate.student?.email || 'N/A'}
-                                    </div>
-                                    <div className="flex flex-wrap gap-1 mt-2">
-                                        {(candidate.matchedSkills || []).map(skill => (
-                                            <span key={skill} className="text-[10px] bg-primary-500/10 text-primary-400 px-2 py-0.5 rounded-full font-bold uppercase">
-                                                {skill}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
+                {loading ? (
+                    // Loading state — API call in progress
+                    <div className="glass-card p-12 flex flex-col items-center justify-center text-slate-400">
+                        <Loader2 className="w-8 h-8 animate-spin text-primary-500 mb-4" />
+                        <p className="font-bold">Analyzing profiles and calculating match scores...</p>
+                        <p className="text-sm mt-2 opacity-70">This might take a few moments for new applications.</p>
+                    </div>
+                ) : candidates.length === 0 ? (
+                    // Truly empty — API responded with no candidates
+                    <div className="glass-card p-12 flex flex-col items-center justify-center text-slate-500 border-dashed">
+                        <Users className="w-12 h-12 text-slate-700 mb-4" />
+                        <p className="font-black text-lg text-slate-600 uppercase tracking-tight">No Applicants Yet</p>
+                        <p className="text-sm mt-2 opacity-70 text-center max-w-sm">
+                            No candidates have applied for this opportunity yet. Check back once applications start coming in.
+                        </p>
+                    </div>
+                ) : (candidates || []).map((candidate, index) => {
+                    const matchScore = candidate.scores?.skillMatchScore || 0;
+                    const isLowMatch = matchScore < 30;
 
-                            {/* Stats & Scores */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-8 border-x border-white/5">
-                                {[
-                                    { label: 'Rank Score', val: candidate.scores?.rankScore || 0, icon: Zap, color: 'text-yellow-400' },
-                                    { label: 'Skill Match', val: candidate.scores?.skillMatchScore || 0, icon: Award, color: 'text-primary-400' },
-                                    { label: 'Readiness', val: candidate.scores?.readinessScore || 0, icon: Brain, color: 'text-purple-400' },
-                                    { label: 'Activity', val: candidate.scores?.practiceScore || 0, icon: Users, color: 'text-green-400' },
-                                ].map((stat) => (
-                                    <div key={stat.label} className="text-center">
-                                        <div className={`flex items-center justify-center gap-1 mb-1 font-black text-lg ${stat.color}`}>
-                                            <stat.icon className="w-4 h-4" />
-                                            {stat.val}%
+                    return (
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                            key={candidate.applicationId}
+                            className={`glass-card p-6 border-l-4 ${candidate.status === 'shortlisted' ? 'border-l-green-500' :
+                                candidate.status === 'rejected' ? 'border-l-red-500' : 'border-l-primary-500/50'
+                                }`}
+                        >
+                            <div className="flex flex-col lg:row lg:items-center justify-between gap-8">
+                                {/* User Info */}
+                                <div className="flex items-center gap-4 min-w-[300px]">
+                                    <div className="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl font-black text-primary-500 border border-white/5">
+                                        {candidate.student?.name?.charAt(0) || '?'}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                                            {candidate.student?.name || 'Student Candidate'}
+                                            {/* Match Score Badge */}
+                                            <div
+                                                className={`px-2 py-0.5 text-xs font-bold rounded flex items-center gap-1 cursor-help ${isLowMatch
+                                                    ? 'bg-slate-500/20 border-slate-500/30 text-slate-400'
+                                                    : 'bg-primary-500/20 border-primary-500/30 text-primary-400'
+                                                    }`}
+                                                title={candidate.matchBreakdown?.details?.join('\n') || 'Score based on profile completeness and skill match.'}
+                                            >
+                                                <Award className="w-3 h-3" />
+                                                {matchScore}% Match
+                                            </div>
+                                        </h3>
+                                        <div className="flex items-center gap-2 text-slate-500 text-sm mt-1">
+                                            <Mail className="w-3 h-3" />
+                                            {candidate.student?.email || 'N/A'}
                                         </div>
-                                        <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider text-nowrap">{stat.label}</p>
+                                        <div className="flex flex-wrap gap-1 mt-2">
+                                            {(candidate.matchedSkills || []).map(skill => (
+                                                <span key={skill} className="text-[10px] bg-primary-500/10 text-primary-400 px-2 py-0.5 rounded-full font-bold uppercase">
+                                                    {skill}
+                                                </span>
+                                            ))}
+                                        </div>
                                     </div>
-                                ))}
-                            </div>
+                                </div>
 
-                            {/* Actions */}
-                            <div className="flex items-center gap-4 shrink-0">
-                                <button
-                                    onClick={() => handleStatusUpdate(candidate.applicationId, 'rejected')}
-                                    disabled={processing === candidate.applicationId || candidate.status === 'rejected'}
-                                    className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-all disabled:opacity-50"
-                                    title="Reject"
-                                >
-                                    <XCircle className="w-6 h-6" />
-                                </button>
-                                <button
-                                    onClick={() => handleStatusUpdate(candidate.applicationId, 'shortlisted')}
-                                    disabled={processing === candidate.applicationId || candidate.status === 'shortlisted'}
-                                    className="p-3 bg-green-500/10 text-green-500 rounded-xl hover:bg-green-500/20 transition-all disabled:opacity-50"
-                                    title="Shortlist"
-                                >
-                                    <CheckCircle className="w-6 h-6" />
-                                </button>
-                                <div className="h-12 w-px bg-white/5" />
-                                <button
-                                    onClick={() => navigate(`/company/student-profile/${candidate.student?.id || candidate.student?._id}`)}
-                                    className="bg-slate-800 p-3 rounded-xl text-white hover:bg-slate-700 transition-all flex items-center gap-2 font-bold text-sm"
-                                >
-                                    View Profile <ExternalLink className="w-4 h-4" />
-                                </button>
+                                {/* Stats & Scores */}
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-8 border-x border-white/5">
+                                    {[
+                                        { label: 'Rank Score', val: candidate.scores?.rankScore || 0, icon: Zap, color: 'text-yellow-400' },
+                                        { label: 'Profile Match', val: candidate.scores?.skillMatchScore || 0, icon: Award, color: 'text-primary-400' },
+                                        { label: 'Readiness', val: candidate.scores?.readinessScore || 0, icon: Brain, color: 'text-purple-400' },
+                                        { label: 'Activity', val: candidate.scores?.practiceScore || 0, icon: Users, color: 'text-green-400' },
+                                    ].map((stat) => (
+                                        <div key={stat.label} className="text-center">
+                                            <div className={`flex items-center justify-center gap-1 mb-1 font-black text-lg ${stat.color}`}>
+                                                <stat.icon className="w-4 h-4" />
+                                                {stat.val}%
+                                            </div>
+                                            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider text-nowrap">{stat.label}</p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex items-center gap-4 shrink-0">
+                                    <button
+                                        onClick={() => handleStatusUpdate(candidate.applicationId, 'rejected')}
+                                        disabled={processing === candidate.applicationId || candidate.status === 'rejected'}
+                                        className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-all disabled:opacity-50"
+                                        title="Reject"
+                                    >
+                                        <XCircle className="w-6 h-6" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleStatusUpdate(candidate.applicationId, 'shortlisted')}
+                                        disabled={processing === candidate.applicationId || candidate.status === 'shortlisted'}
+                                        className="p-3 bg-green-500/10 text-green-500 rounded-xl hover:bg-green-500/20 transition-all disabled:opacity-50"
+                                        title="Shortlist"
+                                    >
+                                        <CheckCircle className="w-6 h-6" />
+                                    </button>
+                                    <div className="h-12 w-px bg-white/5" />
+                                    <button
+                                        onClick={() => navigate(`/company/student-profile/${candidate.student?.id || candidate.student?._id}`)}
+                                        className="bg-slate-800 p-3 rounded-xl text-white hover:bg-slate-700 transition-all flex items-center gap-2 font-bold text-sm"
+                                    >
+                                        View Profile <ExternalLink className="w-4 h-4" />
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    </motion.div>
-                ))}
+                        </motion.div>
+                    )
+                })}
             </div>
         </div>
     );

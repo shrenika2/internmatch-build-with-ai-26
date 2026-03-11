@@ -6,12 +6,13 @@ const User = require('../models/User');
 const notificationService = require('../services/notificationService');
 const aiService = require('../services/aiService');
 const settingsService = require('../utils/settingsService');
+const { calculateMatchScore } = require('../utils/scoringEngine');
 
 // @desc    Get counts for dashboard
 // @route   GET /api/company/stats
 // @access  Private (Company)
 const getCompanyStats = asyncHandler(async (req, res) => {
-    const opportunities = await Opportunity.find({ postedBy: req.user._id });
+    const opportunities = await Opportunity.find({ postedBy: req.user._id }).lean();
     const oppIds = opportunities.map(o => o._id);
 
     const activeOpportunities = opportunities.filter(o => o.status === 'open').length;
@@ -32,7 +33,7 @@ const getCompanyStats = asyncHandler(async (req, res) => {
 // @route   GET /api/company/profile
 // @access  Private (Company)
 const getCompanyProfile = asyncHandler(async (req, res) => {
-    const user = await User.findById(req.user._id).select('companyProfile name email avatar');
+    const user = await User.findById(req.user._id).select('companyProfile name email avatar').lean();
     res.json(user);
 });
 
@@ -50,16 +51,27 @@ const updateCompanyProfile = asyncHandler(async (req, res) => {
 // @route   GET /api/company/applications
 // @access  Private (Company)
 const getCompanyApplicants = asyncHandler(async (req, res) => {
-    const opportunities = await Opportunity.find({ postedBy: req.user._id });
+    const opportunities = await Opportunity.find({ postedBy: req.user._id }).lean();
     const oppIds = opportunities.map(o => o._id);
 
     const applications = await Application.find({ opportunity: { $in: oppIds } })
         .populate('opportunity', 'title type requiredSkills')
         .populate('student', 'name email studentProfile avatar')
-        .sort('-skillMatchScore -createdAt');
+        .sort('-skillMatchScore -createdAt')
+        .lean();
 
-    // Trigger score RECOVERY for those missing it (async background protocol)
+    // Trigger score calculation and RECOVERY for those missing it
     applications.forEach(app => {
+        if ((!app.matchScore || app.matchScore === 0) && app.student && app.opportunity) {
+            const result = calculateMatchScore(app.student.studentProfile, app.opportunity);
+            app.matchScore = result.score;
+            app.matchBreakdown = result.breakdown;
+            Application.findByIdAndUpdate(app._id, {
+                matchScore: result.score,
+                matchBreakdown: result.breakdown
+            }).catch(e => console.error("Error updating match score:", e.message));
+        }
+
         const hasNoScore = !app.skillMatchScore || app.skillMatchScore === 0;
         const hasNoSkills = !app.resumeSkills || app.resumeSkills.length === 0;
 
@@ -154,7 +166,7 @@ const getShortlist = asyncHandler(async (req, res) => {
         throw new Error('AI-Assisted Shortlisting is currently disabled by administrators.');
     }
 
-    const opportunity = await Opportunity.findById(req.params.id);
+    const opportunity = await Opportunity.findById(req.params.id).lean();
 
     if (!opportunity) {
         res.status(404);
@@ -168,11 +180,46 @@ const getShortlist = asyncHandler(async (req, res) => {
     }
 
     const applications = await Application.find({ opportunity: req.params.id })
-        .populate('student', 'name email studentProfile');
+        .populate('student', 'name email studentProfile')
+        .lean();
+
+    const studentIds = applications.map(app => app.student._id);
+
+    // BUCKETED AGGREGATION: Get all metrics in ONE pass instead of N loop queries
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const practiceMetrics = await PracticeAttempt.aggregate([
+        { $match: { student: { $in: studentIds } } },
+        {
+            $group: {
+                _id: '$student',
+                totalAttempts: { $sum: 1 },
+                totalCorrect: { $sum: { $cond: ['$isCorrect', 1, 0] } },
+                last30DaysCorrect: {
+                    $sum: {
+                        $cond: [
+                            { $gte: ['$createdAt', thirtyDaysAgo] },
+                            { $cond: ['$isCorrect', 1, 0] },
+                            0
+                        ]
+                    }
+                }
+            }
+        }
+    ]);
+
+    // Create a HashMap for O(1) lookup
+    const metricsMap = new Map(practiceMetrics.map(m => [m._id.toString(), m]));
 
     const shortlistedCandidates = await Promise.all(
         applications.map(async (app) => {
             const student = app.student;
+            const metrics = metricsMap.get(student._id.toString()) || {
+                totalAttempts: 0,
+                totalCorrect: 0,
+                last30DaysCorrect: 0
+            };
 
             // 1. Eligibility Check (Filter logic)
             let isEligible = true;
@@ -193,42 +240,42 @@ const getShortlist = asyncHandler(async (req, res) => {
 
             if (!isEligible) return null;
 
-            // 2. AI Resume Skill Match Score (Priority)
-            let resumeMatchScore = app.skillMatchScore;
+            // 2. Rule-Based AI Resume Match Score (Priority)
+            let resumeMatchScore = app.matchScore;
 
             if (!resumeMatchScore || resumeMatchScore === 0) {
-                try {
-                    // Phase 3.2: If score missing → compute once and store
-                    const resumeText = await aiService.extractTextFromURL(app.resume);
-                    const aiData = await aiService.extractSkills(resumeText);
-                    resumeMatchScore = aiService.calculateMatchScore(aiData.skills, opportunity.requiredSkills || []);
+                const result = calculateMatchScore(student.studentProfile, opportunity);
+                resumeMatchScore = result.score;
+                app.matchScore = result.score;
+                app.matchBreakdown = result.breakdown;
 
-                    // Cache results
-                    app.resumeSkills = aiData.skills;
-                    app.skillMatchScore = resumeMatchScore;
-                    await app.save();
-                } catch (err) {
-                    console.error(`[AI_MATCH] Failed to compute score for ${app._id}:`, err.message);
-                    resumeMatchScore = 0;
+                // Fire async update
+                Application.findByIdAndUpdate(app._id, {
+                    matchScore: result.score,
+                    matchBreakdown: result.breakdown
+                }).catch(e => console.error("Error updating match score:", e.message));
+
+                // Also trigger skill extraction fallback if skills are empty
+                if (!app.resumeSkills || app.resumeSkills.length === 0) {
+                    try {
+                        const resumeText = await aiService.extractTextFromURL(app.resume);
+                        const aiData = await aiService.extractSkills(resumeText);
+
+                        await Application.findByIdAndUpdate(app._id, {
+                            resumeSkills: aiData.skills,
+                            skillMatchScore: aiService.calculateMatchScore(aiData.skills, opportunity.requiredSkills || [])
+                        });
+                    } catch (err) {
+                        console.error(`[AI_MATCH] Failed to compute score for ${app._id}:`, err.message);
+                    }
                 }
             }
 
             // 3. Practice Activity Score (30%)
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const practiceScore = Math.min((metrics.last30DaysCorrect / 10) * 100, 100);
 
-            const attempts = await PracticeAttempt.find({
-                student: student._id,
-                createdAt: { $gte: thirtyDaysAgo }
-            });
-
-            const correctAttempts = attempts.filter(a => a.isCorrect).length;
-            const practiceScore = Math.min((correctAttempts / 10) * 100, 100);
-
-            // 4. Readiness Score placeholder/logic (30%)
-            const totalAttempts = await PracticeAttempt.countDocuments({ student: student._id });
-            const totalCorrect = await PracticeAttempt.countDocuments({ student: student._id, isCorrect: true });
-            const readinessScore = totalAttempts > 0 ? (totalCorrect / totalAttempts) * 100 : 0;
+            // 4. Readiness Score (30%)
+            const readinessScore = metrics.totalAttempts > 0 ? (metrics.totalCorrect / metrics.totalAttempts) * 100 : 0;
 
             // Final Rank Score (Unified)
             const rankScore = Math.round(
@@ -251,6 +298,7 @@ const getShortlist = asyncHandler(async (req, res) => {
                     practiceScore: Math.round(practiceScore),
                     readinessScore: Math.round(readinessScore)
                 },
+                matchBreakdown: app.matchBreakdown,
                 matchedSkills: app.resumeSkills || [],
                 status: app.status
             };
@@ -300,7 +348,8 @@ const selectCandidate = asyncHandler(async (req, res) => {
 // @access  Private (Company)
 const getCompanyOpportunities = asyncHandler(async (req, res) => {
     const opportunities = await Opportunity.find({ postedBy: req.user._id })
-        .sort('-createdAt');
+        .sort('-createdAt')
+        .lean();
     res.json(opportunities);
 });
 
@@ -309,7 +358,8 @@ const getCompanyOpportunities = asyncHandler(async (req, res) => {
 // @access  Private
 const getPublicCompanies = asyncHandler(async (req, res) => {
     const companies = await User.find({ role: 'company', status: 'approved' })
-        .select('name companyProfile avatar');
+        .select('name companyProfile avatar')
+        .lean();
     res.json(companies);
 });
 

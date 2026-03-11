@@ -3,41 +3,19 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { Toaster } from 'react-hot-toast';
 
-// Components & Navbars
-import StudentNavbar from './components/navbars/StudentNavbar';
-import CompanyNavbar from './components/navbars/CompanyNavbar';
-import FacultyNavbar from './components/navbars/FacultyNavbar';
-import AdminNavbar from './components/navbars/AdminNavbar';
-
-// Pages
+// Core Pages
 import Hero from './components/Hero';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Opportunities from './pages/Opportunities';
-import OpportunityDetail from './pages/OpportunityDetail';
-import Community from './pages/Community';
-import AIShortlist from './pages/AIShortlist';
-import AdminDashboard from './pages/AdminDashboard';
 import AdminLogin from './pages/AdminLogin';
-import StudentDashboard from './pages/StudentDashboard';
-import CompanyDashboard from './pages/CompanyDashboard';
-import FacultyDashboard from './pages/FacultyDashboard';
-import PracticeResources from './pages/PracticeResources';
-import PostOpportunity from './pages/PostOpportunity';
-import GuidanceHub from './pages/GuidanceHub';
 import Unauthorized from './pages/Unauthorized';
-
-// Feature Components for Nested Routing
-import DashboardOverview from './features/dashboard/DashboardOverview';
-import TeamHub from './features/team/TeamHub';
-import ExperienceWall from './features/experience/ExperienceWall';
-import ProfilePage from './features/profile/ProfilePage';
-import NotificationHistory from './pages/NotificationHistory';
-import PracticeArena from './pages/PracticeArena';
-import StudentProfile from './pages/StudentProfile';
-import InterviewPipeline from './pages/InterviewPipeline';
-
 import Navbar from './components/Navbar';
+
+// Feature-Sliced Routes
+import StudentRoutes from './routes/StudentRoutes';
+import CompanyRoutes from './routes/CompanyRoutes';
+import FacultyRoutes from './routes/FacultyRoutes';
+import AdminRoutes from './routes/AdminRoutes';
 
 // Guards
 const PrivateRoute = ({ allowedRoles }) => {
@@ -61,7 +39,7 @@ const AdminRoute = () => {
   return <Outlet />;
 };
 
-// Layouts
+// Public Layout
 const PublicLayout = () => (
   <>
     <Navbar />
@@ -69,42 +47,6 @@ const PublicLayout = () => (
       <Outlet />
     </div>
   </>
-);
-
-const StudentLayout = () => (
-  <>
-    <StudentNavbar />
-    <div className="min-h-screen bg-slate-950">
-      <Outlet />
-    </div>
-  </>
-);
-
-const CompanyLayout = () => (
-  <>
-    <CompanyNavbar />
-    <div className="min-h-screen bg-slate-950">
-      <Outlet />
-    </div>
-  </>
-);
-
-const FacultyLayout = () => (
-  <>
-    <FacultyNavbar />
-    <div className="min-h-screen bg-slate-950">
-      <Outlet />
-    </div>
-  </>
-);
-
-const AdminLayout = () => (
-  <div className="min-h-screen bg-[#050505]">
-    <AdminNavbar />
-    <div className="pt-16">
-      <Outlet />
-    </div>
-  </div>
 );
 
 function AppRoutes() {
@@ -121,52 +63,21 @@ function AppRoutes() {
         <Route path="/unauthorized" element={<Unauthorized />} />
       </Route>
 
-      {/* Student Routes */}
-      <Route path="/student" element={<PrivateRoute allowedRoles={['student']} />}>
-        <Route element={<StudentLayout />}>
-          <Route path="dashboard" element={<StudentDashboard />}>
-            <Route index element={<Navigate to="overview" replace />} />
-            <Route path="overview" element={<DashboardOverview />} />
-            <Route path="profile" element={<ProfilePage />} />
-            <Route path="team" element={<TeamHub />} />
-            <Route path="experience" element={<ExperienceWall />} />
-            <Route path="guidance" element={<GuidanceHub />} />
-          </Route>
-          <Route path="opportunities" element={<Opportunities />} />
-          <Route path="opportunities/:id" element={<OpportunityDetail />} />
-          <Route path="community" element={<Community />} />
-          <Route path="notifications" element={<NotificationHistory />} />
-          <Route path="practice" element={<PracticeResources />} />
-          <Route path="arena/:companyId" element={<PracticeArena />} />
-          <Route path="interview-pipeline" element={<InterviewPipeline />} />
-        </Route>
+      {/* Feature-Sliced Role Routes */}
+      <Route element={<PrivateRoute allowedRoles={['student']} />}>
+        <Route path="/student/*" element={<StudentRoutes />} />
       </Route>
 
-      {/* Company Routes */}
-      <Route path="/company" element={<PrivateRoute allowedRoles={['company']} />}>
-        <Route element={<CompanyLayout />}>
-          <Route path="dashboard" element={<CompanyDashboard />} />
-          <Route path="student-profile/:studentId" element={<StudentProfile />} />
-          <Route path="post-opportunity" element={<PostOpportunity />} />
-          <Route path="opportunities/:id/shortlist" element={<AIShortlist />} />
-          <Route path="community" element={<Community />} />
-        </Route>
+      <Route element={<PrivateRoute allowedRoles={['company']} />}>
+        <Route path="/company/*" element={<CompanyRoutes />} />
       </Route>
 
-      {/* Faculty Routes */}
-      <Route path="/faculty" element={<PrivateRoute allowedRoles={['faculty']} />}>
-        <Route element={<FacultyLayout />}>
-          <Route path="dashboard" element={<FacultyDashboard />} />
-          <Route path="community" element={<Community />} />
-        </Route>
+      <Route element={<PrivateRoute allowedRoles={['faculty']} />}>
+        <Route path="/faculty/*" element={<FacultyRoutes />} />
       </Route>
 
-      {/* Admin Routes */}
-      <Route path="/admin" element={<AdminRoute />}>
-        <Route element={<AdminLayout />}>
-          <Route path="" element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
-        </Route>
+      <Route element={<AdminRoute />}>
+        <Route path="/admin/*" element={<AdminRoutes />} />
       </Route>
 
       {/* Fallback */}

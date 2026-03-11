@@ -49,14 +49,37 @@ const markAsRead = asyncHandler(async (req, res) => {
 });
 
 // @desc    Mark all notifications as read
-// @route   PATCH /api/notifications/read
+// @route   PATCH /api/notifications/acknowledge-all
 // @access  Private
 const markAllRead = asyncHandler(async (req, res) => {
-    await Notification.updateMany(
-        { userId: req.user._id, read: false },
-        { $set: { read: true } }
-    );
-    res.json({ success: true, message: 'All notifications marked as read' });
+    try {
+        console.log(`[DB] Executing batch acknowledgement for user: ${req.user._id}`);
+
+        const result = await Notification.updateMany(
+            { userId: req.user._id, read: false },
+            { $set: { read: true } }
+        );
+
+        console.log(`[DB] Batch acknowledgement result - Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}`);
+
+        if (result.matchedCount === 0) {
+            return res.status(200).json({
+                success: true,
+                message: 'No pending signals detected in the logs.',
+                modifiedCount: 0
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `${result.modifiedCount} signals acknowledged in batch.`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('[DB_ERROR] Batch notification update failure:', error);
+        res.status(500);
+        throw new Error(error.message || 'Batch notification update failed');
+    }
 });
 
 module.exports = {

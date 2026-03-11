@@ -2,28 +2,79 @@ const asyncHandler = require('express-async-handler');
 const Community = require('../models/Community');
 const Message = require('../models/Message');
 const MemberReadStatus = require('../models/MemberReadStatus');
+const Team = require('../models/Team');
 
 // @desc    Create new community
 // @route   POST /api/communities
-// @access  Private (Admin only - as per request)
+// @access  Private
 const createCommunity = asyncHandler(async (req, res) => {
-    const { name, type, relatedOpportunity } = req.body;
+    const { name, type, relatedOpportunity, relatedTeam } = req.body;
 
-    // Allow students to create a 'student-group'
-    if (type !== 'student-group' && req.user.role !== 'admin') {
+    // Allow students to create a 'student-group', and faculty to create hubs for their teams
+    if (type !== 'student-group' && req.user.role === 'student') {
         res.status(403);
-        throw new Error('You do not have permission to create this type of community');
+        throw new Error('Students can only create group hubs.');
+    }
+
+    const members = [req.user._id];
+
+    // If faculty is creating a hub for a team, auto-attach all team members
+    if (relatedTeam) {
+        const team = await Team.findById(relatedTeam);
+        if (team) {
+            team.members.forEach(member => {
+                if (!members.includes(member.user)) {
+                    members.push(member.user);
+                }
+            });
+            // If the creator is faculty and not in team, they are already in members[0]
+        }
     }
 
     const community = await Community.create({
         name,
         type,
         relatedOpportunity,
+        relatedTeam,
         createdBy: req.user._id,
-        members: [req.user._id],
+        members,
     });
 
     res.status(201).json(community);
+});
+
+/**
+ * @desc    Get hubs for logged-in student
+ * @route   GET /api/communities/student
+ * @access  Private (Student)
+ */
+const getStudentHubs = asyncHandler(async (req, res) => {
+    const communities = await Community.find({
+        members: req.user._id
+    }).populate('createdBy', 'name role')
+        .populate('relatedOpportunity', 'title')
+        .populate('relatedTeam', 'name');
+
+    // Add unread counts (reusing logic from getMyCommunities)
+    const hubsWithStats = await Promise.all(communities.map(async (comm) => {
+        const readStatus = await MemberReadStatus.findOne({
+            user: req.user._id,
+            community: comm._id
+        });
+
+        const unreadCount = await Message.countDocuments({
+            community: comm._id,
+            isModerated: false,
+            createdAt: { $gt: readStatus ? readStatus.lastReadAt : new Date(0) }
+        });
+
+        return {
+            ...comm.toObject(),
+            unreadCount
+        };
+    }));
+
+    res.json(hubsWithStats);
 });
 
 // @desc    Get communities user belongs to with unread counts
@@ -256,6 +307,7 @@ const reportContent = asyncHandler(async (req, res) => {
 
 module.exports = {
     createCommunity,
+    getStudentHubs,
     getMyCommunities,
     getAllCommunities,
     joinCommunity,

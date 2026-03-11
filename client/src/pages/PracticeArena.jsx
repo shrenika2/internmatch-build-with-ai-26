@@ -119,12 +119,18 @@ const PracticeArena = () => {
                     </div>
 
                     <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => navigate('/student/mock-interview/setup')}
+                            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary-600/10 hover:bg-primary-600 text-primary-500 hover:text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all border border-primary-500/20"
+                        >
+                            <BrainCircuit className="w-4 h-4" /> Start AI Mock Interview
+                        </button>
                         <div className="text-right hidden sm:block">
                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Accuracy</p>
                             <p className="text-sm font-black text-white">{stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0}%</p>
                         </div>
                         <div className="w-12 h-12 bg-primary-600/10 rounded-2xl border border-primary-500/20 flex items-center justify-center">
-                            <BrainCircuit className="w-6 h-6 text-primary-500" />
+                            <Trophy className="w-6 h-6 text-primary-500" />
                         </div>
                     </div>
                 </div>

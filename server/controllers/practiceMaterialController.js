@@ -69,8 +69,8 @@ const getStudentMaterials = asyncHandler(async (req, res) => {
     // 1. Get public materials
     // 2. Get materials linked to opportunities student applied for
 
-    const appliedOpportunities = await Application.find({ studentId: req.user._id }).select('opportunityId');
-    const oppIds = appliedOpportunities.map(app => app.opportunityId);
+    const appliedOpportunities = await Application.find({ student: req.user._id }).select('opportunity');
+    const oppIds = appliedOpportunities.map(app => app.opportunity);
 
     const materials = await PracticeMaterial.find({
         $or: [

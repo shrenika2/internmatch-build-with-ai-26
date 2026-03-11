@@ -128,38 +128,51 @@ const loginUser = asyncHandler(async (req, res) => {
     }
 
     const { email, password } = req.body;
-    const settings = await settingsService.getSettings();
+    console.log(`[AUTH] Login attempt received for: ${email}`);
 
+    const settings = await settingsService.getSettings();
     const user = await User.findOne({ email }).select('+password');
 
-    if (user && (await user.matchPassword(password))) {
-        if (user.isSuspended || user.status === 'blocked' || user.status === 'rejected') {
-            res.status(403);
-            throw new Error('Access Denied: Your account has been suspended or rejected.');
-        }
-
-        logAction({
-            userId: user._id,
-            action: 'USER_LOGIN',
-            entityType: 'User',
-            entityId: user._id,
-            req
-        });
-
-        res.json({
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            status: user.status,
-            isVerified: user.isVerified || user.status === 'approved',
-            isSuspended: user.isSuspended,
-            token: generateToken(user._id, user.role),
-        });
-    } else {
+    if (!user) {
+        console.error(`[AUTH] Login failed: User not found for email ${email}`);
         res.status(401);
-        throw new Error('Invalid email or password');
+        throw new Error('Authentication failed: User account not found');
     }
+
+    const isMatch = await user.matchPassword(password);
+    console.log(`[AUTH] User found: ${user.email}, Role: ${user.role}`);
+
+    if (!isMatch) {
+        console.error(`[AUTH] Login failed: Incorrect password for ${email}`);
+        res.status(401);
+        throw new Error('Authentication failed: Incorrect password');
+    }
+
+    if (user.isSuspended || user.status === 'blocked' || user.status === 'rejected') {
+        const reason = user.isSuspended ? 'Account suspended' : `Account status: ${user.status}`;
+        console.error(`[AUTH] Login failed: ${reason} for ${email}`);
+        res.status(403);
+        throw new Error(`Access Denied: Your account has been ${user.isSuspended ? 'suspended' : user.status}.`);
+    }
+
+    logAction({
+        userId: user._id,
+        action: 'USER_LOGIN',
+        entityType: 'User',
+        entityId: user._id,
+        req
+    });
+
+    res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        isVerified: user.isVerified || user.status === 'approved',
+        isSuspended: user.isSuspended,
+        token: generateToken(user._id, user.role),
+    });
 });
 
 // @desc    Get user profile

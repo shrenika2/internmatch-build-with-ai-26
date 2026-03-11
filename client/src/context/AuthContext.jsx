@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI, notificationAPI } from '../utils/api';
-import { io } from 'socket.io-client';
 import { toast } from 'react-hot-toast';
+import { socketUtility } from '../utils/socket';
 
 const AuthContext = createContext();
 
@@ -70,22 +70,18 @@ export const AuthProvider = ({ children }) => {
     // Socket Connection Management
     useEffect(() => {
         if (user && user.token) {
-            const newSocket = io(SOCKET_URL, {
-                auth: { token: user.token }
-            });
+            // Use singleton socket via utility
+            const newSocket = socketUtility.connect(user.token);
+
+            if (!newSocket) return;
 
             setSocket(newSocket);
-
-            newSocket.on('connect', () => {
-                console.log('Socket connected:', newSocket.id);
-            });
 
             // Listen for persistent notifications
             newSocket.on('notification:new', (notification) => {
                 setNotifications(prev => [notification, ...(prev || [])]);
                 setUnreadCount(prev => (prev || 0) + 1);
 
-                // Show toast for high priority or general ones
                 toast(notification.message, {
                     icon: notification.priority === 'high' ? '🚨' : '🔔',
                     style: {
@@ -97,7 +93,6 @@ export const AuthProvider = ({ children }) => {
                 });
             });
 
-            // Legacy notification listener (for compatibility during transition)
             newSocket.on('notification', (notification) => {
                 setNotifications(prev => [notification, ...(prev || [])]);
                 setUnreadCount(prev => (prev || 0) + 1);
@@ -122,10 +117,17 @@ export const AuthProvider = ({ children }) => {
                 }
             });
 
+            // No need to disconnect here if we want it to persist across pages, 
+            // but we must remove listeners to avoid accumulation if this effect re-runs
             return () => {
-                newSocket.disconnect();
-                setSocket(null);
+                newSocket.off('notification:new');
+                newSocket.off('notification');
+                newSocket.off('force-logout');
+                newSocket.off('admin:status-update');
             };
+        } else {
+            socketUtility.disconnect();
+            setSocket(null);
         }
     }, [user?.token, user?._id]);
 

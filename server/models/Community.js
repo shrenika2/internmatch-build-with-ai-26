@@ -15,6 +15,10 @@ const communitySchema = mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Opportunity',
         },
+        relatedTeam: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Team',
+        },
         createdBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',

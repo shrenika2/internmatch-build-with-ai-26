@@ -11,7 +11,8 @@ const getStudentMetrics = asyncHandler(async (req, res) => {
     // 2. Fetch Applications for deployment status and successes
     const applications = await Application.find({ student: studentId })
         .populate('opportunity', 'title type status deadline')
-        .sort('-createdAt');
+        .sort('-createdAt')
+        .lean();
 
     // 3. Fetch Upcoming Deadlines (Chronology)
     const upcomingDeadlines = await Opportunity.find({
@@ -20,7 +21,8 @@ const getStudentMetrics = asyncHandler(async (req, res) => {
     })
         .sort('deadline')
         .limit(5)
-        .select('title deadline type');
+        .select('title deadline type')
+        .lean();
 
     // 4. Compute Readiness Trajectory (Simulated 7-day history based on timestamps)
     // In a real system, you'd have a daily snapshot table. 

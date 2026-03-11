@@ -2,22 +2,33 @@ const rateLimit = require('express-rate-limit');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
+const isProd = env.NODE_ENV === 'production';
+
+if (!isProd) {
+    console.log("⚠️  [SYSTEM] RATE LIMITING RELAXED FOR DEVELOPMENT");
+}
+
 /**
  * General API Rate Limiter
  * Limits requests per window to prevent brute force and DoS
  */
 const apiLimiter = rateLimit({
-    windowMs: env.RATE_LIMIT_WINDOW,
-    max: env.RATE_LIMIT_MAX,
+    windowMs: env.RATE_LIMIT_WINDOW || 15 * 60 * 1000,
+    max: isProd ? (env.RATE_LIMIT_MAX || 100) : 10000, // 10k in dev, env-based in prod
     message: {
-        message: 'Too many requests from this IP, please try again later.'
+        success: false,
+        message: 'Too many requests from this IP, please try again later.',
+        retryAfter: '15 minutes'
     },
     handler: (req, res, next, options) => {
-        logger.warn(`[SECURITY] Rate limit exceeded for IP: ${req.ip} - Path: ${req.originalUrl}`);
-        res.status(options.statusCode).send(options.message);
+        const remaining = req.rateLimit.remaining;
+        logger.warn(`[SECURITY] Rate Limit Triggered: IP ${req.ip} | Route: ${req.originalUrl} | Method: ${req.method}`);
+        console.warn(`🛑 [RATE LIMIT] IP ${req.ip} exceeded quota on ${req.originalUrl}`);
+        res.status(options.statusCode).json(options.message);
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => !isProd, // EXPERIMENTAL: Skip rate limiting entirely in development if needed
 });
 
 /**
@@ -25,13 +36,15 @@ const apiLimiter = rateLimit({
  */
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 20, // 20 attempts per 15 mins
+    max: isProd ? 5 : 1000, // Strict 5 attempts in prod, 1000 in dev
     message: {
+        success: false,
         message: 'Too many login attempts. Please try again after 15 minutes.'
     },
     handler: (req, res, next, options) => {
-        logger.error(`[SECURITY] AUTH ABUSE DETECTED: Multiple attempts from IP: ${req.ip}`);
-        res.status(options.statusCode).send(options.message);
+        logger.error(`[SECURITY] AUTH ABUSE DETECTED: Multiple attempts from IP: ${req.ip} on ${req.originalUrl}`);
+        console.error(`🚨 [AUTH LIMIT] Abuse detected from IP ${req.ip}`);
+        res.status(options.statusCode).json(options.message);
     },
     standardHeaders: true,
     legacyHeaders: false,
@@ -42,9 +55,8 @@ const authLimiter = rateLimit({
  */
 const securityHardening = (app) => {
     // Apply global rate limiting
+    // In dev, max is 10k and we can skip, but applying it ensures the middleware is tested
     app.use('/api/', apiLimiter);
-
-    // Apply strict limiting to auth
     app.use('/api/auth/', authLimiter);
 };
 

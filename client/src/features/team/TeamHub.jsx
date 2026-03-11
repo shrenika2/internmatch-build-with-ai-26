@@ -7,14 +7,12 @@ import {
     ShieldCheck, Code, Server, Brain, Palette,
     Megaphone, Smartphone, Settings, MessageSquare, Activity,
     History, ExternalLink, FileText, ArrowLeft, LayoutGrid,
-    ClipboardList, Briefcase, AlertCircle, Clock, Trophy, Star
+    ClipboardList, Briefcase, AlertCircle, Clock, Trophy, Star, Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { io } from 'socket.io-client';
-
 const TeamHub = () => {
-    const { user } = useAuth();
+    const { user, socket } = useAuth();
     const [myTeams, setMyTeams] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('my-teams');
@@ -29,53 +27,58 @@ const TeamHub = () => {
     const [activities, setActivities] = useState([]);
     const [typingUsers, setTypingUsers] = useState({});
     const [evaluation, setEvaluation] = useState(null);
-    const socketRef = useRef(null);
 
     useEffect(() => {
         fetchTeams();
         fetchOpportunities();
 
-        if (user) {
-            const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
-                auth: { token: user.token }
-            });
-            socketRef.current = socket;
-
-            socket.on('task_created', (task) => {
+        if (socket) {
+            const onTaskCreated = (task) => {
                 setTasks(prev => [...(prev || []), task]);
-            });
+            };
 
-            socket.on('task_updated', (updatedTask) => {
+            const onTaskUpdated = (updatedTask) => {
                 setTasks(prev => (prev || []).map(t => t._id === updatedTask._id ? updatedTask : t));
-            });
+            };
 
-            socket.on('asset_created', (asset) => {
+            const onAssetCreated = (asset) => {
                 setAssets(prev => [...(prev || []), asset]);
-            });
+            };
 
-            socket.on('team:message', (message) => {
+            const onTeamMessage = (message) => {
                 setMessages(prev => [...(prev || []), message]);
-                // Auto-read if we are in chat tab? Will implement in Workspace
-            });
+            };
 
-            socket.on('team:typing_update', (data) => {
+            const onTypingUpdate = (data) => {
                 setTypingUsers(prev => ({
                     ...prev,
                     [data.userId]: data.isTyping ? data.userName : null
                 }));
-            });
+            };
 
-            return () => socket.disconnect();
+            socket.on('task_created', onTaskCreated);
+            socket.on('task_updated', onTaskUpdated);
+            socket.on('asset_created', onAssetCreated);
+            socket.on('team:message', onTeamMessage);
+            socket.on('team:typing_update', onTypingUpdate);
+
+            return () => {
+                socket.off('task_created', onTaskCreated);
+                socket.off('task_updated', onTaskUpdated);
+                socket.off('asset_created', onAssetCreated);
+                socket.off('team:message', onTeamMessage);
+                socket.off('team:typing_update', onTypingUpdate);
+            };
         }
-    }, [user]);
+    }, [user, socket]);
 
     useEffect(() => {
-        if (activeWorkspace) {
-            socketRef.current?.emit('join_project', activeWorkspace);
+        if (activeWorkspace && socket) {
+            socket.emit('join_project', activeWorkspace);
             fetchWorkspaceData(activeWorkspace);
-            return () => socketRef.current?.emit('leave_project', activeWorkspace);
+            return () => socket.emit('leave_project', activeWorkspace);
         }
-    }, [activeWorkspace]);
+    }, [activeWorkspace, socket]);
 
     const fetchWorkspaceData = async (teamId) => {
         try {
@@ -131,7 +134,7 @@ const TeamHub = () => {
             fetchTeams();
             setActiveTab('my-teams');
         } catch (err) {
-            alert('Failed to create team');
+            alert(err.response?.data?.message || 'Failed to create team');
         }
     };
 
@@ -497,6 +500,18 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets, messages, activities
         } catch (err) { alert('Failed to add resource'); }
     };
 
+    const handleRepoSubmit = async (e) => {
+        e.preventDefault();
+        const repoUrl = e.target.repoUrl.value;
+        try {
+            await API.put(`/teams/${team._id}/repository`, { repositoryUrl: repoUrl });
+            alert('STRATEGIC SYNC: repository link has been established.');
+            fetchWorkspaceData();
+        } catch (err) { alert('Failed to sync repository'); }
+    };
+
+    const isLead = team?.leader?._id === user?._id;
+
     const handleSendMessage = async (e) => {
         if (e) e.preventDefault();
         if (!chatMessage.trim()) return;
@@ -535,6 +550,7 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets, messages, activities
                         { id: 'chat', label: 'Team Chat', icon: MessageSquare },
                         { id: 'activity', label: 'Mission Log', icon: Activity },
                         { id: 'assets', label: 'Assets', icon: Briefcase },
+                        { id: 'submissions', label: 'Submissions', icon: Globe },
                         { id: 'evaluation', label: 'Evaluation', icon: Trophy }
                     ].map(tab => (
                         <button
@@ -728,6 +744,57 @@ const TeamWorkspace = ({ team, user, onBack, tasks, assets, messages, activities
                                         <button type="submit" className="bg-primary-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest">Transmit Link</button>
                                     </div>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {workspaceTab === 'submissions' && (
+                        <div className="space-y-6">
+                            <h4 className="text-xl font-black text-white uppercase tracking-tighter px-4 flex items-center gap-3">
+                                <Globe className="w-6 h-6 text-primary-500" />
+                                Project Deployment
+                            </h4>
+                            <div className="glass-card p-10 border-white/5 bg-slate-900/40 space-y-8">
+                                <div>
+                                    <h5 className="text-sm font-black text-white uppercase tracking-tight mb-2">GitHub Repository Sync</h5>
+                                    <p className="text-xs text-slate-500 mb-6 font-medium italic">Establishing a link to your repository allows the AI Core to synchronize metrics and analyze your tactical output.</p>
+
+                                    {team.repositoryUrl ? (
+                                        <div className="p-6 bg-white/5 rounded-2xl border border-primary-500/20 flex items-center justify-between">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-xl bg-primary-500/10 flex items-center justify-center text-primary-400">
+                                                    <Code className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Active Repository</p>
+                                                    <a href={team.repositoryUrl} target="_blank" rel="noreferrer" className="text-sm font-bold text-white hover:text-primary-400 transition-colors flex items-center gap-2">
+                                                        {team.repositoryUrl} <ExternalLink className="w-3 h-3" />
+                                                    </a>
+                                                </div>
+                                            </div>
+                                            {isLead && (
+                                                <button onClick={() => { /* Toggle edit mode if needed */ }} className="text-[10px] font-black text-slate-600 uppercase hover:text-white transition-colors">Change Link</button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="p-12 border-2 border-dashed border-white/5 rounded-[2rem] text-center">
+                                            <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-2">No Repository Linked</p>
+                                            <p className="text-xs text-slate-500 italic">Waiting for the Squad Lead to establish the tactical connection.</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {isLead && (
+                                    <form onSubmit={handleRepoSubmit} className="pt-8 border-t border-white/5 space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Configure Repository URL</label>
+                                            <div className="flex gap-4">
+                                                <input name="repoUrl" required className="flex-grow bg-slate-950 border border-white/10 rounded-2xl px-6 py-4 text-sm text-white focus:border-primary-500 transition-all" placeholder="https://github.com/your-username/your-repo" defaultValue={team.repositoryUrl} />
+                                                <button type="submit" className="px-8 bg-primary-600 hover:bg-primary-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all shadow-xl shadow-primary-600/20">Establish Sync</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                )}
                             </div>
                         </div>
                     )}

@@ -5,6 +5,7 @@ const settingsService = require('../utils/settingsService');
 const { logAction } = require('../utils/auditService');
 const notificationService = require('../services/notificationService');
 const aiService = require('../services/aiService');
+const { calculateMatchScore } = require('../utils/scoringEngine');
 
 // @desc    Create new opportunity
 // @route   POST /api/opportunities
@@ -102,7 +103,7 @@ const getOpportunityById = asyncHandler(async (req, res) => {
 // @route   POST /api/opportunities/:id/apply
 // @access  Private (Student only)
 const applyForOpportunity = asyncHandler(async (req, res) => {
-    const { coverLetter } = req.body;
+    const { coverLetter, explicitSkills } = req.body;
 
     // 1. Fetch persistent resume data from User Model
     const user = await User.findById(req.user._id);
@@ -183,18 +184,43 @@ const applyForOpportunity = asyncHandler(async (req, res) => {
         throw new Error('You have already applied for this opportunity');
     }
 
-    // 6. Calculate Match Percentage using PERSISTENT skills
+    // 6. Calculate Match Percentage using PERSISTENT skills and explicitSkills
     const parsedSkills = studentProfile.parsedSkills || [];
-    const matchScore = aiService.calculateMatchScore(parsedSkills, opportunity.requiredSkills || []);
+
+    // Convert explicitSkills (comma separated string) to array
+    const explicitSkillsArray = explicitSkills ? explicitSkills.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    // Merge for AI score (using Set to deduplicate)
+    const combinedSkills = [...new Set([...parsedSkills, ...explicitSkillsArray])];
+
+    const matchScore = aiService.calculateMatchScore(combinedSkills, opportunity.requiredSkills || []);
 
     const application = await Application.create({
         opportunity: req.params.id,
         student: req.user._id,
         resume: studentProfile.resumeFileUrl, // Reusing stored URL
-        resumeSkills: parsedSkills, // Reusing persistent data
+        resumeSkills: combinedSkills, // Save combined skills
         skillMatchScore: matchScore,
         coverLetter,
     });
+
+    // Background rule-based scoring engine
+    setTimeout(async () => {
+        try {
+            // Create a cloned profile with augmented skills for accurate scoring
+            const augmentedProfile = {
+                ...studentProfile,
+                parsedSkills: combinedSkills
+            };
+            const result = calculateMatchScore(augmentedProfile, opportunity);
+            await Application.findByIdAndUpdate(application._id, {
+                matchScore: result.score,
+                matchBreakdown: result.breakdown
+            });
+        } catch (error) {
+            console.error('[SCORING_ENGINE] Error calculating match score asynchronously:', error);
+        }
+    }, 0);
 
     logAction({
         userId: req.user._id,

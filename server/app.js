@@ -1,4 +1,6 @@
 const express = require('express');
+const Sentry = require("@sentry/node");
+require("@sentry/profiling-node");
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -10,6 +12,28 @@ const http = require('http');
 const initSocket = require('./socket');
 
 const app = express();
+
+// Initialize Sentry
+if (env.SENTRY_DSN && env.NODE_ENV !== 'test') {
+    Sentry.init({
+        dsn: env.SENTRY_DSN,
+        integrations: [
+            // HTTP calls tracing
+            new Sentry.Integrations.Http({ tracing: true }),
+            // Express.js middleware tracing
+            new Sentry.Integrations.Express({ app }),
+        ],
+        tracesSampleRate: 1.0,
+        profilesSampleRate: 1.0,
+        environment: env.NODE_ENV,
+    });
+
+    // The request handler must be the first middleware on the app
+    app.use(Sentry.Handlers.requestHandler());
+    // TracingHandler creates a trace for every incoming request
+    app.use(Sentry.Handlers.tracingHandler());
+}
+
 const server = http.createServer(app);
 
 // Initialize Socket.io
@@ -87,6 +111,7 @@ if (env.NODE_ENV === 'development') {
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/opportunities', require('./routes/opportunityRoutes'));
 app.use('/api/communities', require('./routes/communityRoutes'));
+app.use('/api/hubs', require('./routes/hubRoutes'));
 app.use('/api/practice', require('./routes/practiceRoutes'));
 app.use('/api/company', require('./routes/companyRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
@@ -103,11 +128,18 @@ app.use('/api/upload', require('./routes/uploadRoutes'));
 app.use('/api/ai', require('./routes/aiRoutes'));
 app.use('/api/interview', require('./routes/interviewRoutes'));
 app.use('/api/chatbot', require('./routes/chatbot.routes'));
+app.use('/api/workspace', require('./modules/workspace').router);
+app.use('/api/workspace/community', require('./modules/workspace/routes/communityRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {
     res.json({ message: 'Welcome to the Internship & Project Portal API' });
 });
+
+// Sentry Error Handler (Must be before any other error middleware)
+if (env.SENTRY_DSN && env.NODE_ENV !== 'test') {
+    app.use(Sentry.Handlers.errorHandler());
+}
 
 // Error Handling Middleware
 app.use(notFound);

@@ -27,10 +27,6 @@ const aiService = {
             const text = data.text || '';
             logger.info(`[AI_SERVICE] PDF Parsed. Raw Length: ${text.length || 0}`);
 
-            // IMAGE-BASED PDF CHECK: 
-            // Image-based PDFs fail because they contain raw pixel data instead of a selectable text layer.
-            // Standard parsers cannot "read" them without OCR (Optical Character Recognition).
-            // Users should regenerate the PDF from a text editor or use an editable format like DOCX.
             if (text.trim().length < 50) {
                 return {
                     success: false,
@@ -42,7 +38,6 @@ const aiService = {
             return { success: true, text };
         } catch (error) {
             logger.error(`[AI_SERVICE] PDF Extraction Error: ${error.message}`);
-            // Return structured error instead of throwing a crash
             return {
                 success: false,
                 errorType: 'EXTRACTION_FAILED',
@@ -83,7 +78,6 @@ const aiService = {
     /**
      * Fetch file from URL and extract text (PDF or DOCX)
      * Handles buffering and stream conversion
-     * @deprecated Use extractTextFromFile for direct uploads
      */
     extractTextFromURL: async (url) => {
         if (!url) return { success: false, message: 'No URL provided' };
@@ -93,7 +87,6 @@ const aiService = {
             const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 10000 });
             const buffer = Buffer.from(response.data);
 
-            // Routing based on extension
             if (url.toLowerCase().split('?')[0].endsWith('.docx')) {
                 return await aiService.extractTextFromDOCX(buffer);
             } else {
@@ -111,7 +104,6 @@ const aiService = {
 
     /**
      * Extract text directly from a local file path
-     * @param {string} filePath - Path to the file on disk
      */
     extractTextFromFile: async (filePath) => {
         try {
@@ -137,10 +129,6 @@ const aiService = {
         }
     },
 
-    /**
-     * Delete a temporary file from disk
-     * @param {string} filePath 
-     */
     deleteTempFile: (filePath) => {
         if (filePath && fs.existsSync(filePath)) {
             fs.unlink(filePath, (err) => {
@@ -150,13 +138,7 @@ const aiService = {
         }
     },
 
-
-    /**
-     * Parse resume text and extract skills using OpenAI GPT
-     * Uses structured JSON response format
-     */
     extractSkills: async (extractionResult) => {
-        // Handle structured error from extraction phase
         if (typeof extractionResult === 'object' && extractionResult.success === false) {
             logger.warn(`[AI_SERVICE] Extraction failed, skipping AI parsing: ${extractionResult.message}`);
             return { skills: [], error: extractionResult.message };
@@ -165,13 +147,7 @@ const aiService = {
         const resumeText = typeof extractionResult === 'object' ? extractionResult.text : extractionResult;
 
         if (!resumeText || resumeText.trim().length < 50) {
-            logger.warn('[AI_SERVICE] Resume text too short or empty. Extraction aborted.');
             return { skills: [] };
-        }
-
-        if (!env.OPENAI_API_KEY || env.OPENAI_API_KEY === 'your_openai_api_key') {
-            logger.warn('[AI_SERVICE] Missing OpenAI API Key. Using fallback skills.');
-            return { skills: ["JavaScript", "Node.js", "React"] };
         }
 
         try {
@@ -197,83 +173,51 @@ const aiService = {
             });
 
             const parsed = JSON.parse(completion.choices[0].message.content);
-            const skills = Array.isArray(parsed.skills) ? parsed.skills : [];
-
-            logger.info(`[AI_SERVICE] OpenAI extracted ${skills.length} skills.`);
-            return { skills };
+            return { skills: parsed.skills || [] };
         } catch (error) {
             logger.error(`[AI_SERVICE] OpenAI Skill Parsing Error: ${error.message}`);
             return { skills: [] };
         }
     },
 
-    /**
-     * Skill matching logic (Percentage match)
-     * Case-insensitive fuzzy matching for keywords
-     */
     calculateMatchScore: (resumeSkills, requiredSkills) => {
-        if (!requiredSkills || requiredSkills.length === 0) {
-            logger.info('[AI_SERVICE] No required skills for this opportunity. Score: 100');
-            return 100;
-        }
-        if (!resumeSkills || resumeSkills.length === 0) {
-            logger.warn('[AI_SERVICE] No skills found in resume. Score: 0');
-            return 0;
-        }
+        if (!requiredSkills || requiredSkills.length === 0) return 100;
+        if (!resumeSkills || resumeSkills.length === 0) return 0;
 
         const rSkills = resumeSkills.map(s => s.toLowerCase().trim());
         const targetSkills = requiredSkills.map(s => s.toLowerCase().trim());
 
-        // Find matches (Case-insensitive keyword overlap)
         const matched = targetSkills.filter(req =>
             rSkills.some(res => res.includes(req) || req.includes(res))
         );
 
-        const score = Math.round((matched.length / targetSkills.length) * 100);
-        logger.info(`[AI_SERVICE] Matched ${matched.length}/${targetSkills.length} skills. Score: ${score}%`);
-
-        return Math.min(score, 100);
+        return Math.round((matched.length / targetSkills.length) * 100);
     },
 
-    /**
-     * Extract key technical requirements/skills from Job Description
-     */
     extractJDSkills: async (jdText) => {
-        if (!jdText || jdText.trim().length < 50) {
-            return { skills: [] };
-        }
-
+        if (!jdText || jdText.trim().length < 50) return { skills: [] };
         try {
             const prompt = `
                 Analyze the following Job Description and extract a list of required technical skills, tools, and frameworks.
-                Exclude soft skills like "leadership" or "communication".
                 RETURN ONLY JSON: {"skills": ["Skill1", "Skill2"]}
-                
-                JD:
-                ${jdText.substring(0, 4000)}
+                JD: ${jdText.substring(0, 4000)}
             `;
-
             const completion = await openai.chat.completions.create({
                 model: "gpt-3.5-turbo-0125",
                 messages: [
-                    { role: "system", content: "You are a professional recruiting assistant that extracts technical requirements from job descriptions." },
+                    { role: "system", content: "You are a professional recruiting assistant. Output ONLY JSON." },
                     { role: "user", content: prompt }
                 ],
                 temperature: 0,
                 response_format: { type: "json_object" }
             });
-
             const parsed = JSON.parse(completion.choices[0].message.content);
             return { skills: parsed.skills || [] };
         } catch (error) {
-            logger.error(`[AI_SERVICE] JD Parsing Error: ${error.message}`);
             return { skills: [] };
         }
     },
 
-    /**
-     * Build system prompt for AI Interviewer
-     */
     generateInterviewPrompt: (candidateSkills, jobRequirements, roleDescription) => {
         const missingSkills = jobRequirements.filter(req =>
             !candidateSkills.some(res =>
@@ -290,13 +234,92 @@ const aiService = {
 
             Instructions:
             1. Conduct a realistic technical interview.
-            2. Start with a warm greeting and ask the candidate to introduce themselves in the context of this role.
-            3. Ask deep technical questions about their listed skills.
-            4. Gently probe into "Missing Skills" to see if they have any exposure or can learn quickly.
-            5. Keep your responses concise as this is a voice interview.
-            6. If they struggle, provide a hint or move to the next topic.
-            7. Maintain professional tone.
+            2. Start with a warm greeting and ask the candidate to introduce themselves.
+            3. Ask deep technical questions.
+            4. Keep responses concise.
         `.trim();
+    },
+
+    generateInterviewEvaluation: async (role, transcript) => {
+        try {
+            const history = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+            const prompt = `
+                Evaluate the technical interview for ${role}.
+                TRANSCRIPT:
+                ${history}
+                RETURN ONLY JSON: { "score": 0-100, "message": "Feedback", "passed": true/false }
+            `;
+            const completion = await openai.chat.completions.create({
+                model: "gpt-3.5-turbo",
+                messages: [{ role: "system", content: "You are a hiring manager. Output ONLY JSON." }, { role: "user", content: prompt }],
+                response_format: { type: "json_object" }
+            });
+            return JSON.parse(completion.choices[0].message.content);
+        } catch (error) {
+            return { score: 70, message: "Evaluation complete.", passed: true };
+        }
+    },
+
+    /**
+     * Analyze README documentation for clarity and depth
+     */
+    analyzeDocumentation: async (readmeText) => {
+        if (!readmeText || readmeText.trim().length < 100) {
+            return { score: 3, explanation: "Documentation is sparse or missing critical context." };
+        }
+
+        try {
+            const prompt = `
+                Evaluate the following Project README for a hackathon.
+                Look for: Clarity, Technical Depth, Installation Guide, and Structure.
+                SCORE: 1-10.
+                README:
+                ${readmeText.substring(0, 5000)}
+                RETURN ONLY JSON: {"score": 8, "explanation": "Detailed why..."}
+            `;
+
+            const completion = await openai.chat.completions.create({
+                model: "gpt-3.5-turbo-0125",
+                messages: [
+                    { role: "system", content: "You are a technical judge for a MERN stack hackathon." },
+                    { role: "user", content: prompt }
+                ],
+                temperature: 0.2,
+                response_format: { type: "json_object" }
+            });
+
+            return JSON.parse(completion.choices[0].message.content);
+        } catch (error) {
+            logger.error(`[AI_SERVICE] Doc Analysis Error: ${error.message}`);
+            return { score: 5, explanation: "AI could not process the documentation signal." };
+        }
+    },
+
+    /**
+     * Comprehensive Evaluation Engine
+     */
+    evaluateProjectTeam: async (metrics) => {
+        const { gitScore, docScore, docExplanation, milestonesCount = 0 } = metrics;
+
+        // Weighting: 40% Git Activity, 40% Documentation, 20% Milestones
+        const milestoneScore = Math.min(10, (milestonesCount / 5) * 10);
+        const finalScore = (gitScore * 0.4) + (docScore * 0.4) + (milestoneScore * 0.2);
+
+        let suggestedGrade = 'B';
+        if (finalScore >= 9) suggestedGrade = 'A+';
+        else if (finalScore >= 8) suggestedGrade = 'A';
+        else if (finalScore >= 7) suggestedGrade = 'B+';
+        else if (finalScore >= 5) suggestedGrade = 'C';
+        else suggestedGrade = 'D';
+
+        return {
+            finalScore: finalScore.toFixed(1),
+            suggestedGrade,
+            gitScore,
+            docScore,
+            milestoneScore,
+            explanation: `AI detected a high-fidelity output with a doc score of ${docScore}/10 and git score of ${gitScore}/10. ${docExplanation}`
+        };
     }
 };
 

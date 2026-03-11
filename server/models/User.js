@@ -134,4 +134,9 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
 
+// Optimization Indexes
+userSchema.index({ role: 1, status: 1 });
+userSchema.index({ "studentProfile.branch": 1 });
+userSchema.index({ "studentProfile.year": 1 });
+
 module.exports = mongoose.model('User', userSchema);

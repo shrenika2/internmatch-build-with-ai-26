@@ -14,7 +14,8 @@ const {
     createTeamAsset,
     getTeamActivity,
     getTeamMessages,
-    sendTeamMessage
+    sendTeamMessage,
+    updateRepository
 } = require('../controllers/teamController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -26,6 +27,7 @@ router.post('/:id/invite', authorize('student'), inviteMember);
 router.put('/:id/respond', authorize('student'), respondToInvite);
 router.put('/:id/lock', authorize('student'), toggleLock);
 router.put('/:id/role', authorize('student'), updateMemberRole);
+router.put('/:id/repository', authorize('student'), updateRepository);
 
 // Task & Asset Collaboration
 router.get('/:id/tasks', getTeamTasks);

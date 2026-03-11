@@ -36,6 +36,7 @@ const OpportunityDetail = () => {
 
     // Application form state
     const [coverLetter, setCoverLetter] = useState('');
+    const [explicitSkills, setExplicitSkills] = useState('');
     const [studentProfile, setStudentProfile] = useState(null);
 
 
@@ -112,7 +113,8 @@ const OpportunityDetail = () => {
         try {
             // 3. Simple JSON Payload (No Multipart required anymore)
             await API.post(`/opportunities/${id}/apply`, {
-                coverLetter
+                coverLetter,
+                explicitSkills
             });
             setSuccess(true);
         } catch (err) {
@@ -377,6 +379,17 @@ const OpportunityDetail = () => {
                                                 </button>
                                             </div>
                                         )}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block ml-1">Highlight Your Key Skills for This Role</label>
+                                        <textarea
+                                            rows="2"
+                                            placeholder="e.g. React, Node.js, Python (Comma separated)"
+                                            className="w-full bg-slate-900 border border-white/10 rounded-xl py-3 px-4 text-white text-sm resize-none focus:border-primary-500/50 outline-none transition-all"
+                                            value={explicitSkills}
+                                            onChange={(e) => setExplicitSkills(e.target.value)}
+                                        />
                                     </div>
 
                                     <div className="space-y-2">

@@ -10,15 +10,15 @@ const bootstrapAdmin = async () => {
         await mongoose.connect(process.env.MONGO_URI);
         console.log('MongoDB Connected...');
 
-        // Clear any existing admin to ensure correct hashing
-        await User.deleteMany({ role: 'admin' });
-        console.log('Cleared existing admin accounts...');
+        // Clear any existing user with this email to ensure correct hashing and role
+        await User.deleteMany({ email: 'admin@careergrid.com' });
+        console.log('Cleared existing accounts with admin email...');
 
         // Create admin with plain password (Model handles hashing)
         await User.create({
             name: 'System Administrator',
             email: 'admin@careergrid.com',
-            password: ' ',
+            password: process.env.ADMIN_PASSWORD || 'Admin@12345',
             role: 'admin',
             status: 'approved'
         });
@@ -29,7 +29,7 @@ const bootstrapAdmin = async () => {
 
         process.exit();
     } catch (err) {
-        console.error('Error bootstrapping admin:', err);
+        console.error('Error bootstrapping admin:', JSON.stringify(err, null, 2));
         process.exit(1);
     }
 };

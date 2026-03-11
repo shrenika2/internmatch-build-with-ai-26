@@ -15,46 +15,78 @@ const { logAction } = require('../utils/auditService');
 const createTeam = asyncHandler(async (req, res) => {
     const { name, opportunityId } = req.body;
 
+    if (!name || !opportunityId) {
+        res.status(400);
+        throw new Error('Project signature and node ID are required.');
+    }
+
     const opportunity = await Opportunity.findById(opportunityId);
     if (!opportunity) {
         res.status(404);
-        throw new Error('Opportunity not found');
+        throw new Error('Research node not found in the mainframe.');
     }
 
     if (opportunity.type !== 'project') {
         res.status(400);
-        throw new Error('Teams can only be formed for research projects');
+        throw new Error('Tactical teams can only be formed for research project nodes.');
     }
 
-    const team = await Team.create({
-        name,
+    // 1. Check if user is already in a team (Leader or Member) for this project
+    const existingTeam = await Team.findOne({
         opportunity: opportunityId,
-        leader: req.user._id,
-        mentor: opportunity.postedBy,
-        members: [{
+        $or: [
+            { leader: req.user._id },
+            { 'members.user': req.user._id }
+        ]
+    });
+
+    if (existingTeam) {
+        res.status(400);
+        throw new Error('You are already part of a squad for this project node.');
+    }
+
+    // 2. Check Capacity (maxTeams)
+    const teamCount = await Team.countDocuments({ opportunity: opportunityId });
+    if (teamCount >= (opportunity.maxTeams || 10)) {
+        res.status(400);
+        throw new Error('Project node has reached maximum squad capacity.');
+    }
+
+    try {
+        const team = await Team.create({
+            name,
+            opportunity: opportunityId,
+            leader: req.user._id,
+            mentor: opportunity.postedBy,
+            members: [{
+                user: req.user._id,
+                role: 'Lead',
+                status: 'accepted'
+            }]
+        });
+
+        await TeamActivity.create({
+            team: team._id,
             user: req.user._id,
-            role: 'Lead',
-            status: 'accepted'
-        }]
-    });
+            type: 'MEMBER_JOINED',
+            description: `${req.user.name} established the team node.`
+        });
 
-    logAction({
-        userId: req.user._id,
-        action: 'TEAM_CREATE',
-        entityType: 'Team',
-        entityId: team._id,
-        metadata: { teamName: name, opportunityId },
-        req
-    });
+        logAction({
+            userId: req.user._id,
+            action: 'TEAM_CREATE',
+            entityType: 'Team',
+            entityId: team._id,
+            metadata: { teamName: name, opportunityId },
+            req
+        });
 
-    await TeamActivity.create({
-        team: team._id,
-        user: req.user._id,
-        type: 'MEMBER_JOINED',
-        description: `${req.user.name} established the team node.`
-    });
-
-    res.status(201).json(team);
+        res.status(201).json(team);
+    } catch (error) {
+        console.error('[DATABASE_ERROR] Team Creation Failed:', error);
+        res.status(500);
+        throw new Error(`Critical System Failure: ${error.message}`);
+    }
 });
 
 // @desc    Invite member to team
@@ -412,6 +444,36 @@ const createTeamAsset = asyncHandler(async (req, res) => {
     res.status(201).json(populatedAsset);
 });
 
+// @desc    Update team repository URL
+// @route   PUT /api/teams/:id/repository
+// @access  Private (Team Lead)
+const updateRepository = asyncHandler(async (req, res) => {
+    const { repositoryUrl } = req.body;
+    const team = await Team.findById(req.params.id);
+
+    if (!team) {
+        res.status(404);
+        throw new Error('Squad node not found.');
+    }
+
+    if (team.leader.toString() !== req.user._id.toString()) {
+        res.status(403);
+        throw new Error('Only the Squad Lead can synchronize the repository.');
+    }
+
+    team.repositoryUrl = repositoryUrl;
+    await team.save();
+
+    await TeamActivity.create({
+        team: team._id,
+        user: req.user._id,
+        type: 'PROJECT_UPDATED',
+        description: `${req.user.name} synchronized the tactical repository URL.`
+    });
+
+    res.json({ success: true, message: 'Strategic sync successful.' });
+});
+
 module.exports = {
     createTeam,
     inviteMember,
@@ -426,5 +488,6 @@ module.exports = {
     createTeamAsset,
     getTeamActivity,
     getTeamMessages,
-    sendTeamMessage
+    sendTeamMessage,
+    updateRepository
 };

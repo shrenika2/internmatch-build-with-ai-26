@@ -20,7 +20,8 @@ const NotificationHistory = () => {
         try {
             setLoading(true);
             const { data } = await API.get('/notifications');
-            setNotifications(data || []);
+            // Extract array from paginated response
+            setNotifications(data.notifications || []);
         } catch (err) {
             toast.error('Failed to sync notification stream');
         } finally {
@@ -44,21 +45,36 @@ const NotificationHistory = () => {
     }, [socket]);
 
     const markAsRead = async (id) => {
+        console.log(`[SIGNAL] Acknowledging single signal: ${id}`);
         try {
-            await API.put(`/notifications/${id}/read`);
-            setNotifications(prev => (prev || []).map(n => n._id === id ? { ...n, isRead: true } : n));
+            const { data } = await API.patch(`/notifications/${id}/read`);
+            console.log('[SIGNAL] Individual acknowledgement success:', data);
+            setNotifications(prev => (prev || []).map(n => n._id === id ? { ...n, read: true } : n));
         } catch (err) {
-            console.error('Failed to mark as read', err);
+            console.error('[SIGNAL] Individual acknowledgement failure:', err.response || err);
         }
     };
 
     const markAllAsRead = async () => {
+        console.log('[SIGNAL] Initiating batch acknowledgement protocol...');
         try {
-            await API.put('/notifications/mark-all-read');
-            setNotifications(prev => (prev || []).map(n => ({ ...n, isRead: true })));
-            toast.success('All signals acknowledged');
+            const response = await API.patch('/notifications/acknowledge-all');
+
+            console.log('[SIGNAL] Batch acknowledgement response status:', response.status);
+            console.log('[SIGNAL] Batch acknowledgement payload:', response.data);
+
+            if (response.data.success) {
+                if (response.data.modifiedCount > 0) {
+                    setNotifications(prev => (prev || []).map(n => ({ ...n, read: true })));
+                    toast.success(response.data.message || 'All signals acknowledged');
+                } else {
+                    toast.info('No pending signals found to acknowledge.');
+                }
+            }
         } catch (err) {
-            toast.error('Batch update failed');
+            console.error('[SIGNAL] Batch acknowledgement error object:', err);
+            const errorMsg = err.response?.data?.message || 'Batch update failed';
+            toast.error(errorMsg);
         }
     };
 
@@ -117,21 +133,21 @@ const NotificationHistory = () => {
                                     initial={{ opacity: 0, x: -20 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     exit={{ opacity: 0, scale: 0.95 }}
-                                    onClick={() => !notif.isRead && markAsRead(notif._id)}
-                                    className={`glass-card p-6 border-white/5 ${notif.isRead ? 'bg-slate-900/20' : 'bg-slate-900/60 border-primary-500/20 shadow-lg shadow-primary-500/5'} transition-all cursor-pointer group relative overflow-hidden`}
+                                    onClick={() => !notif.read && markAsRead(notif._id)}
+                                    className={`glass-card p-6 border-white/5 ${notif.read ? 'bg-slate-900/20' : 'bg-slate-900/60 border-primary-500/20 shadow-lg shadow-primary-500/5'} transition-all cursor-pointer group relative overflow-hidden`}
                                 >
-                                    {!notif.isRead && (
+                                    {!notif.read && (
                                         <div className="absolute top-0 left-0 w-1 h-full bg-primary-500 shadow-[0_0_15px_rgba(139,92,246,0.5)]" />
                                     )}
 
                                     <div className="flex items-start gap-6">
-                                        <div className={`p-3 rounded-2xl ${notif.isRead ? 'bg-white/5' : 'bg-primary-500/10'} transition-colors`}>
+                                        <div className={`p-3 rounded-2xl ${notif.read ? 'bg-white/5' : 'bg-primary-500/10'} transition-colors`}>
                                             {getIcon(notif.type)}
                                         </div>
 
                                         <div className="flex-1">
                                             <div className="flex items-center justify-between mb-1">
-                                                <h4 className={`text-sm font-black uppercase tracking-tight ${notif.isRead ? 'text-slate-400' : 'text-white'}`}>
+                                                <h4 className={`text-sm font-black uppercase tracking-tight ${notif.read ? 'text-slate-400' : 'text-white'}`}>
                                                     {notif.title}
                                                 </h4>
                                                 <div className="flex items-center gap-2 text-[10px] font-bold text-slate-600 uppercase italic">
@@ -139,7 +155,7 @@ const NotificationHistory = () => {
                                                     {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                 </div>
                                             </div>
-                                            <p className={`text-xs leading-relaxed mb-4 ${notif.isRead ? 'text-slate-600' : 'text-slate-300'}`}>
+                                            <p className={`text-xs leading-relaxed mb-4 ${notif.read ? 'text-slate-600' : 'text-slate-300'}`}>
                                                 {notif.message}
                                             </p>
 

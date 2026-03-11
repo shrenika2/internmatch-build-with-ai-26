@@ -26,4 +26,8 @@ const practiceAttemptSchema = mongoose.Schema(
     }
 );
 
+// Optimization Indexes
+practiceAttemptSchema.index({ student: 1, createdAt: -1 });
+practiceAttemptSchema.index({ student: 1, isCorrect: 1 });
+
 module.exports = mongoose.model('PracticeAttempt', practiceAttemptSchema);

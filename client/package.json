@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/browser": "^8.55.0",
+    "@sentry/react": "^8.55.0",
     "axios": "^1.13.4",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.2",

@@ -46,6 +46,10 @@ const teamSchema = mongoose.Schema(
             type: String,
             enum: ['pending', 'accepted', 'rejected'],
             default: 'pending'
+        },
+        repositoryUrl: {
+            type: String,
+            trim: true
         }
     },
     {

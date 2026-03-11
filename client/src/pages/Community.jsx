@@ -5,12 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Users, MessageSquare, Send, Hash,
     Plus, Loader2, User as UserIcon, Briefcase, GraduationCap,
-    ThumbsUp, Award, Search, Info, Flag
+    ThumbsUp, Award, Search, Info, Flag, MessageCircle
 } from 'lucide-react';
-import { io } from 'socket.io-client';
-
 const Community = () => {
-    const { user } = useAuth();
+    const { user, socket } = useAuth();
     const [communities, setCommunities] = useState([]);
     const [activeCommunity, setActiveCommunity] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -22,20 +20,14 @@ const Community = () => {
     const [newRoomName, setNewRoomName] = useState('');
     const [newRoomType, setNewRoomType] = useState('student-student');
     const scrollRef = useRef(null);
-    const socketRef = useRef(null);
 
     useEffect(() => {
         fetchCommunities();
     }, []);
 
     useEffect(() => {
-        if (user) {
-            const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
-                auth: { token: user.token }
-            });
-            socketRef.current = socket;
-
-            socket.on('new_message', (message) => {
+        if (socket) {
+            const onNewMessage = (message) => {
                 setMessages(prev => {
                     if (prev.find(m => m._id === message._id)) return prev;
                     return [...prev, message];
@@ -44,29 +36,35 @@ const Community = () => {
                 if (activeCommunity?._id === message.community) {
                     handleMarkAsRead(message._id);
                 }
-            });
+            };
 
-            socket.on('message_read', ({ messageId, userId }) => {
+            const onMessageRead = ({ messageId, userId }) => {
                 setMessages(prev => prev.map(m => {
                     if (m._id === messageId && !m.readBy?.some(r => r.user === userId)) {
                         return { ...m, readBy: [...(m.readBy || []), { user: userId }] };
                     }
                     return m;
                 }));
-            });
+            };
 
-            return () => socket.disconnect();
+            socket.on('new_message', onNewMessage);
+            socket.on('message_read', onMessageRead);
+
+            return () => {
+                socket.off('new_message', onNewMessage);
+                socket.off('message_read', onMessageRead);
+            };
         }
-    }, [user, activeCommunity]);
+    }, [user, socket, activeCommunity]);
 
     useEffect(() => {
-        if (activeCommunity && socketRef.current) {
-            socketRef.current.emit('join_room', activeCommunity._id);
+        if (activeCommunity && socket) {
+            socket.emit('join_room', activeCommunity._id);
             fetchMessages(activeCommunity._id);
             API.post(`/communities/${activeCommunity._id}/read`).catch(console.error);
-            return () => socketRef.current.emit('leave_room', activeCommunity._id);
+            return () => socket.emit('leave_room', activeCommunity._id);
         }
-    }, [activeCommunity]);
+    }, [activeCommunity, socket]);
 
     useEffect(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -80,7 +78,8 @@ const Community = () => {
 
     const fetchCommunities = async () => {
         try {
-            const { data } = await API.get('/communities/my');
+            const endpoint = user?.role === 'student' ? '/hubs/student' : '/communities/my';
+            const { data } = await API.get(endpoint);
             setCommunities(data || []);
             if ((data || []).length > 0 && !activeCommunity) setActiveCommunity(data[0]);
         } catch (err) {
@@ -215,7 +214,21 @@ const Community = () => {
                                 <Hash className="w-6 h-6 text-primary-500" />
                                 <div>
                                     <h3 className="text-lg font-bold text-white">{activeCommunity.name}</h3>
-                                    <p className="text-xs text-slate-500 uppercase tracking-widest">{activeCommunity.type.split('-').join(' ')}</p>
+                                    <div className="flex items-center gap-3">
+                                        <p className="text-xs text-slate-500 uppercase tracking-widest">{activeCommunity.type.split('-').join(' ')}</p>
+                                        {activeCommunity.relatedOpportunity && (
+                                            <span className="flex items-center gap-1 text-[10px] text-primary-400 font-black uppercase">
+                                                <Briefcase className="w-3 h-3" />
+                                                {activeCommunity.relatedOpportunity.title}
+                                            </span>
+                                        )}
+                                        {activeCommunity.relatedTeam && (
+                                            <span className="flex items-center gap-1 text-[10px] text-indigo-400 font-black uppercase">
+                                                <Users className="w-3 h-3" />
+                                                {activeCommunity.relatedTeam.name}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>

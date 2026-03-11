@@ -21,6 +21,7 @@ const StudentDashboard = () => {
         { id: 'team', label: 'Team Formation', icon: Users, path: '/student/dashboard/team' },
         { id: 'experience', label: 'Experience Wall', icon: MessageSquare, path: '/student/dashboard/experience' },
         { id: 'guidance', label: 'Guidance Hub', icon: BookOpen, path: '/student/dashboard/guidance' },
+        { id: 'community', label: 'Community Hubs', icon: MessageSquare, path: '/student/community' },
     ];
 
     return (
