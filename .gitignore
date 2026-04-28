@@ -1,5 +1,8 @@
-﻿**/.env*
+**/.env*
 **/node_modules
 **/dist
 **/logs
 **/uploads
+**/venv
+**/__pycache__
+**/*.pyc

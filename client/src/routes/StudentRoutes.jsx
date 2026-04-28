@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import StudentNavbar from '../components/navbars/StudentNavbar';
 
@@ -16,10 +17,14 @@ import PracticeArena from '../pages/PracticeArena';
 import InterviewPipeline from '../pages/InterviewPipeline';
 import StudentWorkspace from '../features/workspace/pages/StudentWorkspace';
 
-// Mock Interview Views
+// Mock Interview Views (Existing)
 import SkillInput from '../pages/mock-interview/SkillInput';
 import Interview from '../pages/mock-interview/Interview';
 import Results from '../pages/mock-interview/Results';
+
+// New Real-Time AI Interview Components
+import SetupScreen from '../components/SetupScreen';
+import MockInterviewer from '../components/MockInterviewer';
 
 const StudentLayout = () => (
     <>
@@ -29,6 +34,17 @@ const StudentLayout = () => (
         </div>
     </>
 );
+
+// New Wrapper Component for the Real-Time Interview Feature
+const LiveInterviewContainer = () => {
+    const [sessionId, setSessionId] = useState(null);
+
+    if (!sessionId) {
+        return <SetupScreen onSetupComplete={setSessionId} />;
+    }
+
+    return <MockInterviewer sessionId={sessionId} />;
+};
 
 const StudentRoutes = () => {
     return (
@@ -51,10 +67,13 @@ const StudentRoutes = () => {
                 <Route path="interview-pipeline" element={<InterviewPipeline />} />
                 <Route path="workspace" element={<StudentWorkspace />} />
 
-                {/* AI Mock Interview Module */}
+                {/* AI Mock Interview Module (Existing) */}
                 <Route path="mock-interview/setup" element={<SkillInput />} />
                 <Route path="mock-interview/live" element={<Interview />} />
                 <Route path="mock-interview/results/:id" element={<Results />} />
+
+                {/* New Real-Time Context-Aware AI Interview */}
+                <Route path="live-interview" element={<LiveInterviewContainer />} />
 
                 <Route path="*" element={<Navigate to="/student/dashboard" replace />} />
             </Route>
