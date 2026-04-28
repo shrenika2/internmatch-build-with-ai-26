@@ -1,13 +1,16 @@
 # 🎓 InternMatch AI — Unified Internship & Placement Platform
 
-> **College Final Year Project | PICT**
-> A production-grade, AI-powered platform that connects students, faculty, companies, and administrators into a single, intelligent hiring and placement ecosystem.
+> **Google Solution Challenge 2026: Build with AI — Submission by Team *Last Second Squad***
+> 
+> InternMatch AI is a production-grade, multi-role ecosystem that democratizes access to career opportunities. By leveraging Google Gemini, we connect students, faculty, companies, and administrators to make campus hiring smarter, fairer, and completely real-time.
+> 
+> **🎯 Targeted UN SDGs:** 📚 Quality Education (4) | 💼 Decent Work & Economic Growth (8) | 🤝 Reduced Inequalities (10)
 
 ---
 
 ## 📖 Table of Contents
 
-1. [Project Overview](#-project-overview)
+1. [Hackathon Motivation](#-hackathon-motivation--problem-statement)
 2. [Live Demo Roles](#-live-demo-roles)
 3. [Technology Stack](#️-technology-stack)
 4. [Google Technologies Used](#-google-technologies-used)
@@ -19,22 +22,20 @@
 10. [API Reference](#-api-reference)
 11. [Current Project Status](#-current-project-status)
 12. [Future Roadmap](#-future-roadmap)
-13. [Author](#-author)
+13. [Team](#-team-last-second-squad)
 
 ---
 
-## 🌟 Project Overview
+## 🌟 Hackathon Motivation & Problem Statement
 
-**InternMatch AI** is a full-stack, multi-role web platform designed to completely digitize the college internship and placement process. It replaces manual, spreadsheet-based workflows with a smart, real-time, AI-driven system.
+**The Problem:**
+Traditional college placement processes are heavily manual, biased, and inefficient. 
+- **Students** lack personalized guidance, struggle to identify skill gaps, and get lost in chaotic application pipelines.
+- **Companies** waste hundreds of hours manually screening resumes instead of focusing on candidate potential.
+- **Faculty & Admins** lack centralized tools to mentor students, track placement fairness, and analyze real-time hiring metrics.
 
-**The Problem It Solves:**
-- Students struggle to discover relevant internships and track applications.
-- Companies waste time manually filtering hundreds of resumes.
-- Faculty have no centralized tool to post research opportunities or mentor students.
-- Admins lack visibility into placement analytics, fairness, and compliance.
-
-**The Solution:**
-InternMatch AI provides a role-specific dashboard for every stakeholder, powered by a Google Gemini AI engine that matches candidates, generates interview questions, and provides real-time coaching.
+**The "Build with AI" Solution:**
+InternMatch AI replaces spreadsheets with intelligence. Powered extensively by **Google Gemini AI**, our platform provides a dedicated, role-specific dashboard for every stakeholder. From generating AI-driven match scores and parsing resumes to conducting real-time, voice-enabled mock interviews, InternMatch AI ensures that every student gets a fair shot at their dream job, regardless of their background.
 
 ---
 
@@ -412,9 +413,10 @@ const apiKey = "AIzaSy..."; // Your Google Gemini API Key
 
 ---
 
-## 👩‍💻 Author
+## 👨‍💻 Team: Last Second Squad
 
-**Shrenika Patil**
-*Final Year Computer Engineering Student, PICT Pune*
+**Hack2Skill / Google Solution Challenge 2026**
+- **Shrenika Patil** (Lead Developer)
+- *(Add other team members here if applicable)*
 
-> Built with ❤️ using React, Node.js, FastAPI, and Google Gemini AI.
+> Built with ❤️ using React, Node.js, FastAPI, and Google Gemini AI to shape the future of student careers.
