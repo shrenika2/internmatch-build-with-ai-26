@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  client:
+    build:
+      context: ./client
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://localhost:5000/api
+      - VITE_AI_API_URL=http://localhost:8000/api
+    depends_on:
+      - server
+      - ai-backend
+
+  server:
+    build:
+      context: ./server
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - MONGO_URI=${MONGO_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - API_BASE_URL=http://localhost
+      - SOCKET_URL=http://localhost
+      - FRONTEND_URL=http://localhost
+      - LOG_LEVEL=warn
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - RATE_LIMIT_WINDOW=300000
+      - RATE_LIMIT_MAX=50
+      - ADMIN_EMAIL=admin@careergrid.com
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+
+  ai-backend:
+    build:
+      context: ./ai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      # Add other necessary env vars for AI backend

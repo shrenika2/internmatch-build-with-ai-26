@@ -15,7 +15,8 @@ export const useFileUpload = () => {
         formData.append('file', file);
 
         try {
-            const res = await axios.post('http://localhost:5000/workspace/upload', formData, {
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const res = await axios.post(`${apiUrl}/workspace/upload`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
                 onUploadProgress: (progressEvent) => {
                     const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);

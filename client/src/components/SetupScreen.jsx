@@ -24,7 +24,8 @@ const SetupScreen = ({ onSetupComplete }) => {
     formData.append('job_description', jd);
 
     try {
-      const response = await fetch('http://localhost:8000/api/setup-interview', {
+      const aiApiUrl = import.meta.env.VITE_AI_API_URL || 'http://localhost:8000/api';
+      const response = await fetch(`${aiApiUrl}/setup-interview`, {
         method: 'POST',
         body: formData,
       });
