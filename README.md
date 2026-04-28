@@ -262,3 +262,9 @@ const apiKey = "AIzaSy..."; // Your Google Gemini API Key
 
 *Built with ❤️ by Team — Last Second Squad | Google Solution Challenge 2026 — Build with AI*  
 *Walchand College of Engineering, Sangli*
+
+
+
+
+
+
